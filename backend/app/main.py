@@ -1,11 +1,13 @@
 """Aplicação FastAPI. Rodar com: uv run uvicorn --factory app.main:create_app"""
 
 import logging
+from pathlib import Path
 
 from fastapi import FastAPI
 
 from app import __version__
 from app.api.errors import install_error_handlers
+from app.api.frontend import install_frontend
 from app.api.middleware import install_middlewares
 from app.api.routes import api_router
 from app.config import Settings, get_settings
@@ -32,4 +34,6 @@ def create_app(settings: Settings | None = None, clock: Clock | None = None) -> 
     install_error_handlers(app)
     install_middlewares(app, settings)
     app.include_router(api_router, prefix="/api/v1")
+    if settings.frontend_dist:
+        install_frontend(app, Path(settings.frontend_dist))  # depois da API: rota coringa
     return app

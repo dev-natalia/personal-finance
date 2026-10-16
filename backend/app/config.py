@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     session_idle_days: int = 30
     session_max_days: int = 90
     log_level: str = "INFO"
+    # Pasta do build do frontend (frontend/dist). Vazio = só a API (desenvolvimento).
+    frontend_dist: str | None = None
 
     @field_validator("secret_key")
     @classmethod
