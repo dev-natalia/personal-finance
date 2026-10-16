@@ -1,8 +1,17 @@
-/** Provisório: a Tarefa 7 substitui pelas rotas do app. */
+import { QueryClientProvider } from '@tanstack/react-query'
+import { BrowserRouter } from 'react-router'
+
+import { createQueryClient } from './api/queryClient'
+import { AppRoutes } from './routes'
+
+const queryClient = createQueryClient()
+
 export function App() {
   return (
-    <main className="p-4">
-      <h1 className="text-xl font-semibold">Finanças</h1>
-    </main>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
+    </QueryClientProvider>
   )
 }
