@@ -16,6 +16,9 @@ from app.domain.dates import Clock, SystemClock
 def create_app(settings: Settings | None = None, clock: Clock | None = None) -> FastAPI:
     settings = settings or get_settings()
     logging.basicConfig(level=settings.log_level)
+    # O log de acesso do uvicorn grava a query string (ex.: ?q=<estabelecimento digitado>).
+    # O log próprio (app.access) registra só método, caminho, status e duração.
+    logging.getLogger("uvicorn.access").disabled = True
     app = FastAPI(
         title="Assistente Financeiro Pessoal",
         version=__version__,

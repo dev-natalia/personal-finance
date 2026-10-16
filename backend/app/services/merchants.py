@@ -1,8 +1,10 @@
 """Estabelecimentos e a memória estabelecimento → categoria."""
 
+import uuid
 from uuid import UUID
 
 from sqlalchemy import case, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.domain.merchants import normalize
@@ -16,13 +18,24 @@ def resolve_merchant(session: Session, user_id: UUID, name: str | None) -> Merch
     normalized = normalize(name)[:120]
     if not normalized:
         return None
-    merchant = session.scalar(
-        select(Merchant).where(Merchant.user_id == user_id, Merchant.normalized_name == normalized)
+    by_name = select(Merchant).where(
+        Merchant.user_id == user_id, Merchant.normalized_name == normalized
     )
+    merchant = session.scalar(by_name)
     if merchant is None:
-        merchant = Merchant(user_id=user_id, name=name.strip()[:120], normalized_name=normalized)
-        session.add(merchant)
-        session.flush()
+        # ON CONFLICT: se outra requisição criou o mesmo estabelecimento ao mesmo tempo,
+        # esperamos o commit dela e reaproveitamos o registro, em vez de falhar.
+        session.execute(
+            insert(Merchant)
+            .values(
+                id=uuid.uuid7(),
+                user_id=user_id,
+                name=name.strip()[:120],
+                normalized_name=normalized,
+            )
+            .on_conflict_do_nothing(index_elements=["user_id", "normalized_name"])
+        )
+        merchant = session.scalars(by_name).one()
     return merchant
 
 

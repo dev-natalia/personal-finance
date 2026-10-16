@@ -16,7 +16,7 @@ from app.models import (
     Transaction,
     TransactionStatus,
 )
-from app.services import ledger, transactions
+from app.services import accounts, categories, ledger, transactions
 from app.services.context import RequestContext
 from app.services.transactions import NewExpense, NewIncome, NewRefund, NewTransfer, WriteResult
 from tests.support import find_category, make_account
@@ -267,3 +267,15 @@ def test_void_blocked_by_active_refunds(
     assert _code(exc) == "has_active_refunds"
     transactions.void_transaction(db, ctx, refund.id)
     transactions.void_transaction(db, ctx, expense.id)
+
+
+def test_update_keeps_unchanged_archived_account_and_category(
+    db: Session, ctx: RequestContext, itau: Account, expense: Transaction
+) -> None:
+    """Editar só as notas de um lançamento antigo continua possível após arquivar conta/categoria."""
+    assert expense.category_id is not None
+    categories.archive_category(db, ctx, expense.category_id)
+    accounts.archive_account(db, ctx, itau.id)
+    changes = {"notes": "nota nova", "account_id": itau.id, "category_id": expense.category_id}
+    result = transactions.update_transaction(db, ctx, expense.id, changes)
+    assert result.transaction.notes == "nota nova"

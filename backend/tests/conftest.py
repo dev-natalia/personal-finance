@@ -16,7 +16,7 @@ from tests.support import FIXED_NOW, PASSWORD
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 TEST_DATABASE_URL = os.environ.get(
-    "TEST_DATABASE_URL", "postgresql+psycopg://finance:finance@localhost:5433/finance_test"
+    "TEST_DATABASE_URL", "postgresql+psycopg://finance:finance@127.0.0.1:5433/finance_test"
 )
 
 

@@ -88,6 +88,16 @@ def payload_hash(kind: str, fields: dict[str, object]) -> bytes:
     return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).digest()
 
 
+def _lock_idempotency_key(session: Session, user_id: UUID, key: str) -> None:
+    """Serializa requisições com a mesma chave até o fim da transação (clique duplo em paralelo).
+
+    A segunda requisição espera a primeira confirmar e então encontra o lançamento já gravado.
+    """
+    session.execute(
+        select(func.pg_advisory_xact_lock(func.hashtextextended(f"{user_id}:{key}", 0)))
+    )
+
+
 def _find_by_key(session: Session, user_id: UUID, key: str) -> Transaction | None:
     return session.scalar(
         select(Transaction).where(
@@ -257,6 +267,7 @@ def create_transaction(
 ) -> WriteResult:
     digest = payload_hash(type(data).__name__, asdict(data)) if idempotency_key else None
     if idempotency_key is not None and digest is not None:
+        _lock_idempotency_key(session, ctx.user_id, idempotency_key)
         existing = _find_by_key(session, ctx.user_id, idempotency_key)
         if existing is not None:
             return _replay(existing, digest)
@@ -329,6 +340,7 @@ def create_refund(
         else None
     )
     if idempotency_key is not None and digest is not None:
+        _lock_idempotency_key(session, ctx.user_id, idempotency_key)
         existing = _find_by_key(session, ctx.user_id, idempotency_key)
         if existing is not None:
             return _replay(existing, digest)
@@ -504,12 +516,15 @@ def update_transaction(
         for key in ("occurred_on", "description", "notes", "payment_method"):
             if key in changes:
                 setattr(tx, key, changes[key])
-        if "account_id" in changes:
+        # Valores reenviados sem mudança não são revalidados: arquivar uma conta ou categoria
+        # não pode impedir a edição de outros campos dos lançamentos antigos dela.
+        if "account_id" in changes and changes["account_id"] != tx.account_id:
             tx.account_id = get_active_account(session, ctx, changes["account_id"]).id
-        if "destination_account_id" in changes:
-            destination = get_active_account(session, ctx, changes["destination_account_id"])
+        destination_id = changes.get("destination_account_id", tx.destination_account_id)
+        if destination_id != tx.destination_account_id:
+            destination = get_active_account(session, ctx, destination_id)
             tx.destination_account_id = destination.id
-        if "category_id" in changes:
+        if category_changed:
             _change_category(session, ctx, tx, changes["category_id"])
         _validate(session, tx)
     record(session, ctx, tx, AuditAction.UPDATE, before)

@@ -126,3 +126,9 @@ def test_logs_do_not_contain_credentials(
     assert PASSWORD not in caplog.text
     assert "ana@example.com" not in caplog.text
     assert "path=/api/v1/auth/login" in caplog.text
+
+
+def test_uvicorn_access_log_is_disabled(settings: Settings, clock: Clock) -> None:
+    """O log de acesso do uvicorn grava a query string (ex.: ?q=<estabelecimento>)."""
+    create_app(settings, clock=clock)
+    assert logging.getLogger("uvicorn.access").disabled
