@@ -1,0 +1,56 @@
+[project]
+name = "personal-finance-backend"
+version = "0.1.0"
+description = "Backend do Assistente Financeiro Pessoal"
+requires-python = ">=3.14"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "sqlalchemy>=2.0.40",
+  "alembic>=1.16",
+  "psycopg[binary]>=3.2.10",
+  "pydantic>=2.12",
+  "pydantic-settings>=2.6",
+  "pwdlib[argon2]>=0.2.1",
+  "tzdata>=2025.2",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3",
+  "hypothesis>=6.120",
+  "httpx>=0.28",
+  "ruff>=0.12",
+  "mypy>=1.13",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+extend-exclude = ["migrations/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+# E501: o formatter cuida das linhas de código; textos em português podem passar de 100.
+# RUF001-003: caracteres como "º" e "±" são intencionais nos textos em português.
+ignore = ["E501", "RUF001", "RUF002", "RUF003"]
+
+[tool.mypy]
+python_version = "3.14"
+plugins = ["pydantic.mypy"]
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "app.domain.*"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_any_generics = true
+warn_return_any = true
