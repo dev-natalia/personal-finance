@@ -19,8 +19,32 @@
     {
       "name": "frontend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
+      "runtimeArgs": [
+        "--prefix",
+        "frontend",
+        "run",
+        "dev"
+      ],
       "port": 5173
+    },
+    {
+      "name": "app",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": [
+        "--directory",
+        "backend",
+        "run",
+        "uvicorn",
+        "--factory",
+        "app.main:create_app",
+        "--port",
+        "8001"
+      ],
+      "env": {
+        "FRONTEND_DIST": "../frontend/dist",
+        "APP_ORIGIN": "http://localhost:8001"
+      },
+      "port": 8001
     }
   ]
 }
