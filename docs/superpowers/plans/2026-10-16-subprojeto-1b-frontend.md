@@ -23,6 +23,28 @@
 - Em desenvolvimento, o Vite (porta 5173) faz proxy de `/api` para `http://127.0.0.1:8000`; o backend roda com `APP_ORIGIN=http://localhost:5173` e `COOKIE_SECURE=false`.
 - Todo commit termina com `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
+### Direção visual (aprovada): "comprovante"
+
+O app é um caderno de gastos; toda compra no Brasil termina num comprovante. O **cartão de confirmação é um comprovante impresso** — o único elemento ousado da interface. Todo o resto é quieto: a linha do tempo e as listas são um livro-caixa (linhas finas, sem caixinhas, sem sombras), com valores alinhados à direita em algarismos tabulares.
+
+| Token (`@theme`) | Valor | Uso |
+|---|---|---|
+| `--color-paper` | `#F3F5F2` | fundo do app |
+| `--color-ink` | `#1B2340` | texto principal |
+| `--color-ink-soft` | `#4A5373` | texto secundário (contraste AA sobre o papel) |
+| `--color-pen` | `#2440C4` | ação principal, foco, item ativo da navegação |
+| `--color-stamp` | `#B8322A` | saídas e erros (sempre com o sinal `−` ou com texto) |
+| `--color-income` | `#1F7A4D` | entradas |
+| `--color-rule` | `#D5DBD6` | linhas do livro-caixa e divisórias |
+| `--color-slip` | `#FFFFFF` | papel do comprovante |
+| `--color-highlight` | `#FFF3C4` | data destacada quando não é hoje |
+
+- **Tipografia:** uma família, Recursive (variável), embutida pelo pacote `@fontsource-variable/recursive` (a CSP `default-src 'self'` bloqueia fontes externas). Interface com `MONO 0, CASL 0`; **dentro do comprovante**, `MONO 1` para valores e campos. Algarismos tabulares (`font-variant-numeric: tabular-nums`) em todo valor. Escala: 13 / 14 / 16 (corpo) / 20 / 34 px (saldo); pesos 400, 600 e 650 (saldo e totais).
+- **Comprovante:** fundo `--color-slip`, bordas superior e inferior picotadas (gradiente radial repetido na cor do papel), divisória tracejada antes do pagamento, uma única sombra de 1px. **Único movimento automático:** ao aparecer, o comprovante desce como se saísse da impressora (cerca de 220 ms, `clip-path`/`translate`), desativado com `prefers-reduced-motion: reduce`.
+- **Livro-caixa:** linha = descrição (16px) + categoria e pagamento em segunda linha (13px, `--color-ink-soft`, separados por vírgula); valor à direita com sinal (`−18,00` em `--color-stamp`, `+3.000,00` em `--color-income`). Cabeçalhos de dia em 13px, peso 600, sem maiúsculas.
+- **Texto:** frases naturais, verbo primeiro nos botões ("Confirmar", "Tentar de novo", "Criar conta"), sem "por favor", sem exclamação, sem rótulos em maiúsculas e sem separadores `·` ou travessão entre fragmentos. Erros dizem o que aconteceu e o que fazer. Estados vazios convidam a agir.
+- **Piso de qualidade:** foco visível em `--color-pen` (contorno de 3px), alvo de toque de pelo menos 44px, `prefers-reduced-motion` respeitado, layout de 360px a desktop.
+
 ### Desvios deliberados em relação à spec
 
 - **Sem Radix e sem react-hook-form.** Os formulários são pequenos e os elementos nativos (`<select>`, `<dialog>`, `<input type="date">`) já são acessíveis por teclado e leitor de tela. Menos dependências para manter; se algum componente nativo se mostrar insuficiente, Radix entra pontualmente.
@@ -174,15 +196,15 @@ git commit -m "feat(api): servir o frontend compilado (SPA) e exportar o OpenAPI
 - [ ] **Step 1: Criar `package.json` e instalar dependências** (em `frontend/`, versões mais recentes; ficam no `package-lock.json`):
 
 ```bash
-npm install react react-dom react-router @tanstack/react-query
+npm install react react-dom react-router @tanstack/react-query @fontsource-variable/recursive
 npm install -D vite @vitejs/plugin-react typescript @types/react @types/react-dom @types/node tailwindcss @tailwindcss/vite vitest jsdom @testing-library/react @testing-library/user-event @testing-library/jest-dom msw axe-core openapi-typescript vite-plugin-pwa @playwright/test
 ```
 
 - [ ] **Step 2: Configuração**
   - `tsconfig.json`: `strict`, `noUncheckedIndexedAccess`, `noUnusedLocals`, `noUnusedParameters`, `verbatimModuleSyntax`, `moduleResolution: "bundler"`, `jsx: "react-jsx"`, `noEmit`, `types: ["vite/client", "node"]`, `include: ["src", "vite.config.ts", "playwright.config.ts", "e2e"]`.
   - `vite.config.ts` (via `defineConfig` de `vitest/config`): plugins `react()` e `tailwindcss()`; `server.port = 5173`; proxy `/api` → `http://127.0.0.1:8000`; `test.environment = "jsdom"`, `test.setupFiles = ["./src/test/setup.ts"]`, `test.exclude` inclui `e2e/**`.
-  - `index.html`: `lang="pt-BR"`, `viewport` com `viewport-fit=cover`, `theme-color #0f766e`, título `Finanças`.
-  - `index.css`: `@import "tailwindcss";` e tokens em `@theme`: `--color-brand: #0f766e`, `--color-brand-strong: #115e59`, `--color-danger: #b91c1c`, `--color-income: #15803d`; `body` `bg-slate-50 text-slate-900`; `:focus-visible` com contorno de 3px `--color-brand`; `input, select, textarea { font-size: 1rem }`.
+  - `index.html`: `lang="pt-BR"`, `viewport` com `viewport-fit=cover`, `theme-color #F3F5F2`, título `Finanças`.
+  - `index.css`: `@import "@fontsource-variable/recursive";`, `@import "tailwindcss";` e os tokens da seção **Direção visual** em `@theme` (mais `--font-sans: "Recursive Variable", system-ui, sans-serif`); `body` com `--color-paper` e `--color-ink`, `font-variation-settings: "MONO" 0, "CASL" 0`; utilitários `.slip-mono` (`"MONO" 1`) e `.tabular` (`tabular-nums`); `:focus-visible` com contorno de 3px `--color-pen`; `input, select, textarea { font-size: 1rem }`; bloco `@media (prefers-reduced-motion: reduce)` zerando animações e transições.
 
 - [ ] **Step 3: Escrever o teste que falha** `src/App.test.tsx`: `renders the app name` — `render(<App />)` mostra o heading `Finanças`.
 
@@ -329,7 +351,7 @@ Run: `npm test` → FAIL.
 - `LoginPage`: campos "E-mail" e "Senha" (`autocomplete` `username`/`current-password`), botão "Entrar"; sucesso grava o usuário em `queryKeys.me` e navega para `state.from ?? "/"`; erro mostra `ApiError.detail` em `role="alert"`.
 - `useUnauthenticatedRedirect()`: ouve `UNAUTHENTICATED_EVENT` e, **só se houver usuária em cache**, faz `resetQueries(queryKeys.me)` (evita laço de 401).
 - `AppShell`: `<nav aria-label="Principal">` fixa embaixo no celular e lateral a partir de `md`: Início, Lançamentos, Contas, Mais; `Outlet`. `MorePage`: links "Categorias" e botão "Sair" (`api.logout`, limpa o cache, vai para `/login`).
-- `styles.ts`: classes compartilhadas `inputClass`, `primaryButtonClass`, `secondaryButtonClass`, `chipClass`, `cardClass`.
+- `styles.ts`: classes compartilhadas `inputClass`, `primaryButtonClass` (fundo `--color-pen`), `secondaryButtonClass` (contorno), `chipClass` (pílula com contorno `--color-pen`; com `aria-pressed="true"` fica preenchida), `ledgerRowClass` (linha do livro-caixa com borda inferior `--color-rule`), `slipClass` (comprovante). Alvos de toque de pelo menos 44px. Navegação: item ativo em `--color-pen`, peso 650.
 
 - [ ] **Step 1: Escrever os testes que falham** (`renderWithProviders(<AppRoutes />, { route })` + MSW):
   - `unauthenticated visit shows the login page` (`/auth/me` 401 → heading "Entrar") e `login page has no accessibility violations`.
@@ -381,18 +403,19 @@ Run: `npm test` → FAIL.
 
 **Interfaces:**
 - `SavedEntry { line: string; warnings: string[] }`.
-- `describeSaved(tx: TransactionOut, names: { accounts: Map<string, string>; categories: Map<string, string> }): string` → `"Despesa registrada: R$ 42,00 · Mercado · Pix Itaú"`; receita: `"Receita registrada: R$ 3.000,00 · Salário · Itaú"`.
+- `describeSaved(tx: TransactionOut, names: { accounts: Map<string, string>; categories: Map<string, string> }): string` → `"Despesa registrada: R$ 42,00 em Mercado, paga com Pix Itaú."`; receita: `"Receita registrada: R$ 3.000,00 em Salário, recebida na Itaú."`.
 - `ConfirmationCard({ parsed: ParsedItem[]; hints: EntryHintsOut; onSaved: (entries: SavedEntry[]) => void; onClose: () => void })`:
-  - `useReducer(cardReducer, parsed, initCard)`; heading "Confirmar lançamento(s)" recebe foco ao montar (`tabIndex={-1}`).
-  - Por item (`ItemEditor`): caixa "Incluir" quando há mais de 1 item; campos Valor (texto), Descrição, Data (`type="date"`, destacada quando ≠ hoje); **pagamento (despesa):** pergunta "Como você pagou?" com até 3 botões de `hints.top_payment_options` (rótulo `"Pix · Itaú"`, `aria-pressed`) e, sempre, selects "Conta" e "Meio"; **receita:** só select "Conta"; **categoria:** select da categoria do tipo, com valor = escolha da usuária ?? sugestão (`useMerchantSuggestion(description)` = `default_category_id` do estabelecimento de nome normalizado igual) ?? "A classificar" do tipo; trocar o select grava `categoryId`.
+  - Visual de **comprovante** (seção Direção visual: `slipClass`, bordas picotadas, `slip-mono` nos campos, valor em 20px peso 650, divisória tracejada antes do pagamento, entrada "de impressora" desativada por `prefers-reduced-motion`).
+  - `useReducer(cardReducer, parsed, initCard)`; heading "Confirmar lançamento" (ou "Confirmar lançamentos" com mais de um item) recebe foco ao montar (`tabIndex={-1}`).
+  - Por item (`ItemEditor`): caixa "Incluir" quando há mais de 1 item; campos Valor (texto), Descrição, Data (`type="date"`, destacada quando ≠ hoje); **pagamento (despesa):** pergunta "Como você pagou?" com até 3 botões de `hints.top_payment_options` (rótulo `"Pix Itaú"`, meio seguido da conta, `aria-pressed`) e, sempre, selects "Conta" e "Meio"; **receita:** só select "Conta"; **categoria:** select da categoria do tipo, com valor = escolha da usuária ?? sugestão (`useMerchantSuggestion(description)` = `default_category_id` do estabelecimento de nome normalizado igual) ?? "A classificar" do tipo; trocar o select grava `categoryId`.
   - Ao montar: `api.entryChecks` para os itens com valor e descrição → `duplicates`; item com duplicata mostra "Possível duplicata: já existe um lançamento igual em ±2 dias."
   - Botão principal "Confirmar" (ou "Tentar de novo" se algum item falhou), habilitado por `canConfirm`; envia **em sequência** só os itens incluídos e não gravados, cada um com sua `key`; sucesso → `saved` com `describeSaved` e `warnings[].detail`; erro → `failed` com `ApiError.detail`. Ao final: se houve gravações, `useInvalidateLedger()` e `onSaved(entries)`; se todos os incluídos estão gravados, `onClose()`.
   - "Cancelar" chama `onClose()`. Mensagens de envio em região `aria-live="polite"`; erro de item com `role="alert"`.
 
 - [ ] **Step 1: Escrever os testes que falham** (MSW com `hints` e categorias de `fixtures.ts`):
-  - `shows the parsed values` (valor `42,00`, descrição `mercado`, chip "Pix · Itaú" pressionado).
+  - `shows the parsed values` (valor `42,00`, descrição `mercado`, chip "Pix Itaú" pressionado).
   - `confirm stays disabled until payment is chosen` (item sem pagamento; clicar no chip habilita).
-  - `confirm posts with an idempotency key and reports the saved line` (handler grava o cabeçalho; `onSaved` recebe `"Despesa registrada: R$ 42,00 · …"`).
+  - `confirm posts with an idempotency key and reports the saved line` (handler grava o cabeçalho; `onSaved` recebe `"Despesa registrada: R$ 42,00 em Mercado, paga com Pix Itaú."`).
   - **`retry after network failure reuses the same idempotency key`** (1ª resposta `HttpResponse.error()`, 2ª 201; as duas chaves capturadas são iguais; o botão mostra "Tentar de novo" entre elas).
   - **`batch with one failure keeps the others saved and retries only the failed one`** (2 itens; o 2º recebe 422 na 1ª vez; na nova tentativa só 1 requisição é feita).
   - `unchecked items are not sent`.
@@ -420,14 +443,14 @@ Run: `npm test` → FAIL.
 **Interfaces:**
 - `draft.ts`: `DRAFT_KEY = "pf:draft"`; `loadDraft(): string`; `saveDraft(text: string): void` (texto vazio remove a chave); ambos tolerantes a `sessionStorage` indisponível (try/catch).
 - `useOnlineStatus(): boolean` (`navigator.onLine` + eventos `online`/`offline`); `OfflineBanner` com `role="status"`: "Sem conexão. O que você digitar fica guardado aqui até a conexão voltar."
-- `BalanceHeader`: "Saldo em contas" + `formatBRL(total)`.
-- `Timeline({ sessionEntries: SavedEntry[] })`: lançamentos de `useRecentTransactions()` agrupados por `occurred_on` (cabeçalho `dayLabel`), cada linha com descrição, categoria (ou "Transferência") e valor com sinal (`−` despesa/transferência, `+` receita/estorno); abaixo, as linhas confirmadas nesta sessão com seus avisos. Vazia: "Nenhum lançamento ainda. Experimente digitar “42 mercado pix itaú”."
+- `BalanceHeader`: "Saldo em contas" (14px, `--color-ink-soft`) e `formatBRL(total)` em 34px, peso 650, algarismos tabulares: o maior texto da tela.
+- `Timeline({ sessionEntries: SavedEntry[] })`: livro-caixa (seção Direção visual) com os lançamentos de `useRecentTransactions()` agrupados por `occurred_on` (cabeçalho `dayLabel`); cada linha com descrição e, em segunda linha, categoria (ou "Transferência") e pagamento separados por vírgula; valor à direita com sinal (`−` despesa/transferência em `--color-stamp`, `+` receita/estorno em `--color-income`); abaixo, as linhas confirmadas nesta sessão com seus avisos. Vazia: "Anote seu primeiro gasto. Digite algo como “42 mercado pix itaú”."
 - `Composer({ onSubmit: (text: string) => void; disabled: boolean })`: `textarea` com rótulo "Novo lançamento" e placeholder `Ex.: 42 mercado pix itaú`; Enter envia, Shift+Enter quebra linha; botão "Enviar"; restaura `loadDraft()` ao montar e chama `saveDraft` a cada alteração; limpa ao enviar. Link "Formulário completo" para `/lancamentos/novo`.
 - `HomePage`: `BalanceHeader`, `Timeline`, `ConfirmationCard` (quando há itens interpretados por `parseEntry(text, { today: hints.today, accounts: hints.accounts })`), `OfflineBanner` (quando offline) e `Composer` fixo acima da navegação no celular.
 
 - [ ] **Step 1: Escrever os testes que falham**
-  - `shows balance and groups the timeline by day` (lançamentos de hoje e ontem → cabeçalhos "Hoje" e "Ontem"; `−R$ 42,00`).
-  - `typing a phrase opens the confirmation card` (digitar `42 mercado pix itaú` + Enter → heading "Confirmar lançamento(s)").
+  - `shows balance and groups the timeline by day` (lançamentos de hoje e ontem → cabeçalhos "Hoje" e "Ontem"; linha com `−42,00` e "Mercado, Pix Itaú").
+  - `typing a phrase opens the confirmation card` (digitar `42 mercado pix itaú` + Enter → heading "Confirmar lançamento").
   - `empty text does nothing`.
   - **`draft survives the redirect to login`**: com `/auth/me` 200, digitar `42 padaria` (sem enviar); trocar `/auth/me` para 401 e disparar `UNAUTHENTICATED_EVENT`; fazer login de novo → o campo volta com `42 padaria`.
   - `offline shows the banner and keeps the text`.
@@ -494,7 +517,7 @@ Run: `npm test` → FAIL.
 - Test: `frontend/src/features/transactions/TransactionsPage.test.tsx`
 
 **Interfaces:**
-- `TransactionsPage` (`/lancamentos`): filtros — período (De/Até), conta, categoria, tipo, situação (`CONFIRMED` padrão, `VOIDED`, `ALL` = "Todos") — refletidos na URL (`useSearchParams`); lista de `useTransactions(filtros)` com "Carregar mais" enquanto houver `next_cursor`; por lançamento: "Editar" (abre `TransactionForm` com `initial` em `<dialog>`), "Anular" (confirmação; erro `has_active_refunds` exibido), "Estornar" (só despesas confirmadas).
+- `TransactionsPage` (`/lancamentos`): filtros — período (De/Até), conta, categoria, tipo, situação (`CONFIRMED` padrão, `VOIDED`, `ALL` = "Todos") — refletidos na URL (`useSearchParams`); lista em formato de livro-caixa (mesmas linhas da tela inicial) de `useTransactions(filtros)` com "Carregar mais" enquanto houver `next_cursor`; por lançamento: "Editar" (abre `TransactionForm` com `initial` em `<dialog>`), "Anular" (confirmação; erro `has_active_refunds` exibido), "Estornar" (só despesas confirmadas).
 - `RefundDialog({ expense: TransactionOut; onDone })`: Valor (padrão = valor da despesa), Data (padrão hoje), conta (padrão a da despesa); chave por abertura do diálogo; erro `refund_exceeds_original` exibido.
 
 - [ ] **Step 1: Escrever os testes que falham** — `filters are kept in the URL`, `load more appends the next page` (usa `next_cursor`), `voided items are hidden by default and shown with Todos`, `void shows the server message when refunds exist`, `refund sends amount and idempotency key`, `transactions page has no accessibility violations`.
@@ -593,7 +616,8 @@ Expected: 1 teste passando.
   - digitar `dia 3: 35 ifood; 18 uber` → cartão com 2 itens e a pergunta "Como você pagou?" → escolher o atalho → Confirmar;
   - lançamento em lote com um item desmarcado; edição pela tela Lançamentos; estorno; anulação;
   - navegação só por teclado (Tab/Enter/Esc) na tela inicial e no cartão;
-  - modo avião: aviso de sem conexão e texto preservado.
+  - modo avião: aviso de sem conexão e texto preservado;
+  - revisão visual por captura de tela contra a seção Direção visual (paleta, comprovante, livro-caixa, foco visível), também com `prefers-reduced-motion` ativo.
 Expected: todos os itens funcionam; nenhum erro no console do navegador.
 
 - [ ] **Step 3: Commit** — `docs: frontend no README`.
