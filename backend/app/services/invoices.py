@@ -16,6 +16,7 @@ from app.domain.cards import (
     invoice_month_for,
     split_installments,
 )
+from app.domain.errors import RuleViolation
 from app.domain.money import quantize
 from app.models import (
     AuditAction,
@@ -24,9 +25,10 @@ from app.models import (
     InvoiceItem,
     InvoiceItemKind,
     ItemDirection,
+    ItemStatus,
     Transaction,
 )
-from app.services.audit import record
+from app.services.audit import record, snapshot
 from app.services.context import RequestContext
 
 
@@ -130,3 +132,120 @@ def bill_purchase(
             )
         )
     return items
+
+
+def bill_charge(session: Session, ctx: RequestContext, tx: Transaction, card: Card) -> InvoiceItem:
+    """Encargo (juros, multa, IOF) na fatura da data em que foi cobrado."""
+    month = invoice_month_for(tx.occurred_on, card.closing_day, card.due_day)
+    return add_item(
+        session,
+        ctx,
+        get_or_create_invoice(session, card, month),
+        kind=InvoiceItemKind.CHARGE,
+        direction=ItemDirection.DEBIT,
+        amount=tx.amount,
+        transaction_id=tx.id,
+    )
+
+
+# --- mudanças em lançamentos do cartão (nada em fatura fechada muda) -----------------------
+
+CLOSED_INVOICE_MESSAGE = "Esta compra já está em fatura fechada. Registre um estorno."
+
+
+def _active_items(session: Session, where: Any) -> list[tuple[InvoiceItem, Invoice]]:
+    rows = session.execute(
+        select(InvoiceItem, Invoice)
+        .join(Invoice, Invoice.id == InvoiceItem.invoice_id)
+        .where(where, InvoiceItem.status == ItemStatus.ACTIVE)
+        .order_by(Invoice.reference_month)
+        .with_for_update(of=InvoiceItem)
+    ).all()
+    return [(item, invoice) for item, invoice in rows]
+
+
+def _ensure_not_closed(rows: list[tuple[InvoiceItem, Invoice]], today: date) -> None:
+    if any(invoice.closing_date <= today for _, invoice in rows):
+        raise RuleViolation("void_blocked_by_closed_invoice", CLOSED_INVOICE_MESSAGE)
+
+
+def _set_status(
+    session: Session,
+    ctx: RequestContext,
+    item: InvoiceItem,
+    status: ItemStatus,
+    cancelled_by_id: uuid.UUID | None = None,
+) -> None:
+    before = snapshot(item)
+    item.status = status
+    item.cancelled_by_id = cancelled_by_id
+    record(session, ctx, item, AuditAction.UPDATE, before)
+
+
+def ensure_items_open(session: Session, ctx: RequestContext, tx: Transaction) -> None:
+    """Recusa mudar um lançamento que já tem item em fatura fechada."""
+    _ensure_not_closed(_active_items(session, InvoiceItem.transaction_id == tx.id), ctx.today())
+
+
+def cancel_transaction_items(session: Session, ctx: RequestContext, tx: Transaction) -> None:
+    """Cancela os itens de uma compra ou encargo (anulação ou edição que refaz os itens)."""
+    rows = _active_items(session, InvoiceItem.transaction_id == tx.id)
+    _ensure_not_closed(rows, ctx.today())
+    for item, _ in rows:
+        _set_status(session, ctx, item, ItemStatus.CANCELLED)
+
+
+def apply_card_refund(
+    session: Session, ctx: RequestContext, refund: Transaction, original: Transaction, card: Card
+) -> None:
+    """Estorno no cartão (A13): parcelas inteiras ainda não fechadas são canceladas, da última
+    para a primeira, enquanto couberem no valor; o resto vira crédito na fatura aberta hoje.
+
+    Compra à vista não tem parcelas a cancelar: o estorno todo vira crédito. Faturas fechadas
+    nunca mudam (já foram conferidas com o banco).
+    """
+    today = ctx.today()
+    remaining = refund.amount
+    if original.installments is not None:
+        rows = _active_items(
+            session,
+            (InvoiceItem.transaction_id == original.id)
+            & (InvoiceItem.kind == InvoiceItemKind.PURCHASE),
+        )
+        future = [item for item, invoice in rows if invoice.closing_date > today]
+        for item in sorted(future, key=lambda i: i.installment_number or 0, reverse=True):
+            if item.amount > remaining:
+                break
+            _set_status(session, ctx, item, ItemStatus.CANCELLED, cancelled_by_id=refund.id)
+            remaining -= item.amount
+    if remaining > 0:
+        month = invoice_month_for(today, card.closing_day, card.due_day)
+        add_item(
+            session,
+            ctx,
+            get_or_create_invoice(session, card, month),
+            kind=InvoiceItemKind.REFUND_CREDIT,
+            direction=ItemDirection.CREDIT,
+            amount=remaining,
+            transaction_id=refund.id,
+        )
+
+
+def undo_card_refund(session: Session, ctx: RequestContext, refund: Transaction) -> None:
+    """Anula um estorno no cartão: remove o crédito e devolve as parcelas que ele cancelou.
+
+    Recusado se o crédito, ou alguma parcela a devolver, já está em fatura fechada.
+    """
+    today = ctx.today()
+    credits = _active_items(session, InvoiceItem.transaction_id == refund.id)
+    restored = session.execute(
+        select(InvoiceItem, Invoice)
+        .join(Invoice, Invoice.id == InvoiceItem.invoice_id)
+        .where(InvoiceItem.cancelled_by_id == refund.id)
+        .with_for_update(of=InvoiceItem)
+    ).all()
+    _ensure_not_closed(credits + [(i, inv) for i, inv in restored], today)
+    for item, _ in credits:
+        _set_status(session, ctx, item, ItemStatus.CANCELLED)
+    for item, _ in restored:
+        _set_status(session, ctx, item, ItemStatus.ACTIVE)

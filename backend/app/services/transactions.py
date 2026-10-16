@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.domain.cards import MAX_INSTALLMENTS, MIN_INSTALLMENTS
 from app.domain.categorization import resolve_category
-from app.domain.errors import Conflict, Notice, RuleViolation
+from app.domain.errors import Conflict, NotFound, Notice, RuleViolation
 from app.domain.money import format_brl, quantize
 from app.models import (
     Account,
@@ -269,8 +269,7 @@ def _build_categorized(
     )
 
 
-def _check_installments(data: NewCardExpense) -> None:
-    count, remaining = data.installments, data.remaining_installments
+def _check_installments(count: int | None, remaining: int | None) -> None:
     valid = (count is None and remaining is None) or (
         count is not None
         and MIN_INSTALLMENTS <= count <= MAX_INSTALLMENTS
@@ -284,15 +283,15 @@ def _check_installments(data: NewCardExpense) -> None:
         )
 
 
-def _check_card_dates(card: Card, data: NewCardExpense) -> None:
-    if data.remaining_installments is not None:
-        if data.occurred_on >= card.opening_date:
+def _check_card_dates(card: Card, occurred_on: date, remaining: int | None) -> None:
+    if remaining is not None:
+        if occurred_on >= card.opening_date:
             raise RuleViolation(
                 "in_progress_after_card_opening",
                 "Compras a partir do início do cartão entram como compra normal, "
                 "não como parcelada em andamento.",
             )
-    elif data.occurred_on < card.opening_date:
+    elif occurred_on < card.opening_date:
         raise RuleViolation(
             "purchase_before_card_opening",
             "A compra é anterior ao início do cartão. Para parcelas que já estavam correndo, "
@@ -304,8 +303,8 @@ def _build_card_expense(
     session: Session, ctx: RequestContext, data: NewCardExpense
 ) -> tuple[Transaction, Card]:
     card = cards.get_active_card(session, ctx, data.card_id)
-    _check_installments(data)
-    _check_card_dates(card, data)
+    _check_installments(data.installments, data.remaining_installments)
+    _check_card_dates(card, data.occurred_on, data.remaining_installments)
     merchant = resolve_merchant(session, ctx.user_id, data.merchant or data.description)
     category = _resolve_category(session, ctx, data.category_id, merchant, CategoryKind.EXPENSE)
     if data.category_id is not None:
@@ -460,29 +459,41 @@ def create_refund(
         raise RuleViolation(
             "refund_before_expense", "O estorno não pode ter data anterior à despesa."
         )
-    account_id = data.account_id or original.account_id
-    if account_id is None:
-        # Despesa no cartão: o estorno vira crédito na fatura (Tarefa 6 do plano 2).
-        raise RuleViolation(
-            "card_refund_not_supported", "Estorno de compra no cartão ainda não é suportado."
-        )
-    account = get_active_account(session, ctx, account_id)
-    _check_opening(account, data.occurred_on)
-
     tx = Transaction(
         user_id=ctx.user_id,
         type=TransactionType.REFUND,
         amount=quantize(data.amount),
         occurred_on=data.occurred_on,
         description=(data.description or f"Estorno: {original.description}")[:200],
-        account_id=account.id,
         category_id=original.category_id,
         merchant_id=original.merchant_id,
         refund_of_id=original.id,
         source=source,
     )
+    card: Card | None = None
+    if original.card_id is not None:
+        # Estorno no cartão vira crédito na fatura (A13); não há conta para escolher.
+        if data.account_id is not None:
+            raise RuleViolation(
+                "refund_account_not_allowed",
+                "O estorno de compra no cartão vira crédito na fatura; não escolha uma conta.",
+            )
+        card = session.get_one(Card, original.card_id)
+        tx.card_id = card.id
+    else:
+        # Despesa sem cartão sempre tem conta (CHECK shape_by_type).
+        account_id = data.account_id or original.account_id
+        if account_id is None:
+            raise NotFound("a conta")
+        account = get_active_account(session, ctx, account_id)
+        _check_opening(account, data.occurred_on)
+        tx.account_id = account.id
     raced = _insert(session, ctx, tx, idempotency_key, digest)
-    return raced if raced is not None else WriteResult(tx)
+    if raced is not None:
+        return raced
+    if card is not None:
+        invoices.apply_card_refund(session, ctx, tx, original, card)
+    return WriteResult(tx)
 
 
 _EDITABLE: dict[TransactionType, frozenset[str]] = {
@@ -508,7 +519,55 @@ _EDITABLE: dict[TransactionType, frozenset[str]] = {
         {"amount", "occurred_on", "description", "notes", "account_id"}
     ),
 }
-_NULLABLE = frozenset({"notes", "merchant"})
+_NULLABLE = frozenset({"notes", "merchant", "installments"})
+# Lançamentos do cartão: o que pode mudar (nada que já está em fatura fechada muda).
+_CARD_EXPENSE_EDITABLE = frozenset(
+    {
+        "amount",
+        "occurred_on",
+        "description",
+        "notes",
+        "merchant",
+        "category_id",
+        "installments",
+        "card_id",
+    }
+)
+_CHARGE_EDITABLE = frozenset({"amount", "occurred_on", "description", "notes"})
+# Campos que refazem os itens da fatura quando mudam.
+_STRUCTURAL = ("amount", "occurred_on", "installments", "card_id")
+
+
+def _editable(tx: Transaction) -> frozenset[str]:
+    """Pagamento de fatura e juros de parcelamento só mudam anulando a operação inteira;
+    estorno no cartão só muda o texto (valor e data mexeriam nas parcelas canceladas);
+    trocar entre conta e cartão é anular e registrar de novo."""
+    match tx.type:
+        case TransactionType.INVOICE_PAYMENT:
+            return frozenset()
+        case TransactionType.CHARGE:
+            return frozenset() if tx.payment_group_id is not None else _CHARGE_EDITABLE
+        case TransactionType.EXPENSE if tx.card_id is not None:
+            return _CARD_EXPENSE_EDITABLE
+        case TransactionType.REFUND if tx.card_id is not None:
+            return frozenset({"description", "notes"})
+        case _:
+            return _EDITABLE[tx.type]
+
+
+def _structural_change(tx: Transaction, changes: Mapping[str, Any]) -> bool:
+    """Muda algo que refaz os itens da fatura? (valor reenviado igual não conta)."""
+    if tx.card_id is None:
+        return False
+    for key in _STRUCTURAL:
+        if key not in changes:
+            continue
+        new = changes[key]
+        if key == "amount" and new is not None:
+            new = quantize(new)
+        if new != getattr(tx, key):
+            return True
+    return False
 
 
 def _involved_accounts(tx: Transaction) -> list[UUID]:
@@ -583,6 +642,29 @@ def _validate(session: Session, tx: Transaction) -> None:
             )
 
 
+def _apply_card_changes(
+    session: Session, ctx: RequestContext, tx: Transaction, changes: Mapping[str, Any]
+) -> Card:
+    """Aplica parcelas e cartão novos e revalida as regras do cartão (valor e data já foram
+    aplicados). Devolve o cartão em que os itens serão refeitos."""
+    if "installments" in changes:
+        tx.installments = changes["installments"]
+    card_id = changes.get("card_id", tx.card_id)
+    if card_id != tx.card_id:
+        card = cards.get_active_card(session, ctx, card_id)
+    else:
+        card = session.get_one(Card, tx.card_id)
+    tx.card_id = card.id
+    if tx.type is TransactionType.EXPENSE:
+        _check_installments(tx.installments, tx.remaining_installments)
+        _check_card_dates(card, tx.occurred_on, tx.remaining_installments)
+    elif tx.occurred_on < card.opening_date:
+        raise RuleViolation(
+            "purchase_before_card_opening", "A data é anterior ao início do cartão."
+        )
+    return card
+
+
 def update_transaction(
     session: Session, ctx: RequestContext, transaction_id: UUID, changes: Mapping[str, Any]
 ) -> WriteResult:
@@ -590,7 +672,7 @@ def update_transaction(
         session, Transaction, transaction_id, ctx.user_id, "o lançamento", for_update=True
     )
     _require_confirmed(tx)
-    not_editable = set(changes) - _EDITABLE[tx.type]
+    not_editable = set(changes) - _editable(tx)
     if not_editable:
         raise RuleViolation(
             "field_not_editable",
@@ -604,6 +686,15 @@ def update_transaction(
         raise RuleViolation(
             "field_required", f"Campos obrigatórios não podem ficar vazios: {', '.join(missing)}."
         )
+
+    structural = _structural_change(tx, changes)
+    if structural:
+        if tx.type is TransactionType.EXPENSE and _refunded_total(session, tx.id) > 0:
+            raise RuleViolation(
+                "has_active_refunds",
+                "Anule os estornos desta compra antes de mudar valor, data, parcelas ou cartão.",
+            )
+        invoices.ensure_items_open(session, ctx, tx)
 
     before = snapshot(tx)
     category_changed = "category_id" in changes and changes["category_id"] != tx.category_id
@@ -629,8 +720,16 @@ def update_transaction(
             tx.destination_account_id = destination.id
         if category_changed:
             _change_category(session, ctx, tx, changes["category_id"])
+        card = _apply_card_changes(session, ctx, tx, changes) if structural else None
         _validate(session, tx)
     record(session, ctx, tx, AuditAction.UPDATE, before)
+    if card is not None:
+        invoices.cancel_transaction_items(session, ctx, tx)
+        if tx.type is TransactionType.CHARGE:
+            invoices.bill_charge(session, ctx, tx, card)
+        else:
+            invoices.bill_purchase(session, ctx, tx, card)
+        return WriteResult(tx, notices=_card_limit_notices(session, ctx, card))
     if tx.type is TransactionType.EXPENSE and category_changed:
         _sync_refund_categories(session, ctx, tx)
     as_of = max(ctx.today(), tx.occurred_on)
@@ -644,10 +743,21 @@ def void_transaction(session: Session, ctx: RequestContext, transaction_id: UUID
     )
     if tx.status is TransactionStatus.VOIDED:
         return tx
+    if tx.type is TransactionType.INVOICE_PAYMENT or (
+        tx.type is TransactionType.CHARGE and tx.payment_group_id is not None
+    ):
+        raise RuleViolation(
+            "void_payment_group", "Pagamentos de fatura são anulados pela operação inteira."
+        )
     if tx.type is TransactionType.EXPENSE and _refunded_total(session, tx.id) > 0:
         raise RuleViolation(
             "has_active_refunds", "Anule os estornos desta despesa antes de anulá-la."
         )
+    if tx.card_id is not None:
+        if tx.type is TransactionType.REFUND:
+            invoices.undo_card_refund(session, ctx, tx)
+        else:
+            invoices.cancel_transaction_items(session, ctx, tx)
     before = snapshot(tx)
     tx.status = TransactionStatus.VOIDED
     tx.voided_at = ctx.now()
