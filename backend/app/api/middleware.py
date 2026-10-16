@@ -8,19 +8,12 @@ from fastapi import FastAPI, Request, Response
 from starlette.middleware.base import RequestResponseEndpoint
 
 from app.api.errors import problem, request_id_of
+from app.api.security_headers import apply_security_headers
 from app.config import Settings
 
 logger = logging.getLogger("app.access")
 
 UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
-SECURITY_HEADERS = {
-    "Content-Security-Policy": (
-        "default-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
-    ),
-    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
-    "X-Content-Type-Options": "nosniff",
-    "Referrer-Policy": "same-origin",
-}
 
 
 def install_middlewares(app: FastAPI, settings: Settings) -> None:
@@ -42,11 +35,9 @@ def install_middlewares(app: FastAPI, settings: Settings) -> None:
     @app.middleware("http")
     async def security_headers(request: Request, call_next: RequestResponseEndpoint) -> Response:
         response = await call_next(request)
+        # A documentação interativa carrega scripts de CDN: sem CSP só nela.
         is_docs = settings.enable_docs and request.url.path.startswith("/docs")
-        for name, value in SECURITY_HEADERS.items():
-            if name == "Content-Security-Policy" and is_docs:
-                continue  # a documentação interativa carrega scripts de CDN
-            response.headers.setdefault(name, value)
+        apply_security_headers(response.headers, skip_csp=is_docs)
         return response
 
     @app.middleware("http")
