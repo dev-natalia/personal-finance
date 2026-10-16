@@ -32,3 +32,14 @@ test('unclassified reads naturally', () => {
     'Despesa registrada: R$ 35,00, ainda sem categoria, paga com Pix Itaú.',
   )
 })
+
+test('transfer names both accounts', () => {
+  const tx = transaction({
+    type: 'TRANSFER',
+    amount: '300.00',
+    category_id: null,
+    payment_method: null,
+    destination_account_id: ACCOUNTS.nubank.id,
+  })
+  expect(describeSaved(tx, names)).toBe('Transferência registrada: R$ 300,00 de Itaú para Nubank.')
+})

@@ -118,3 +118,38 @@ test('home has no accessibility violations', async () => {
   await screen.findByRole('heading', { name: 'Hoje' })
   await expectNoA11yViolations(container)
 })
+
+test('full form returns home with the confirmation line', async () => {
+  mockHome()
+  server.use(
+    http.post('/api/v1/transactions', () =>
+      HttpResponse.json(
+        {
+          transaction: transaction({
+            type: 'TRANSFER',
+            amount: '300.00',
+            description: 'Reserva',
+            category_id: null,
+            payment_method: null,
+            destination_account_id: ACCOUNTS.nubank.id,
+          }),
+          replayed: false,
+          warnings: [],
+        },
+        { status: 201 },
+      ),
+    ),
+  )
+  const user = userEvent.setup()
+  renderWithProviders(<AppRoutes />, { route: '/lancamentos/novo' })
+  await user.selectOptions(await screen.findByLabelText('Tipo'), 'Transferência')
+  await user.type(screen.getByLabelText('Valor'), '300')
+  await user.type(screen.getByLabelText('Descrição'), 'Reserva')
+  await user.selectOptions(await screen.findByLabelText('De'), 'Itaú')
+  await user.selectOptions(screen.getByLabelText('Para'), 'Nubank')
+  await user.click(screen.getByRole('button', { name: 'Salvar lançamento' }))
+  expect(
+    await screen.findByText('Transferência registrada: R$ 300,00 de Itaú para Nubank.'),
+  ).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Início' })).toBeInTheDocument()
+})

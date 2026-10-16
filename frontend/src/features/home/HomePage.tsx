@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router'
 
 import { useEntryHints } from '../../api/queries'
 import { type ParsedItem, parseEntry } from '../../domain/parser'
@@ -15,7 +16,18 @@ export function HomePage() {
   const hints = useEntryHints()
   const online = useOnlineStatus()
   const [card, setCard] = useState<{ id: number; parsed: ParsedItem[] } | null>(null)
-  const [entries, setEntries] = useState<SavedEntry[]>([])
+  const location = useLocation()
+  // O formulário completo volta para cá com a frase do que foi gravado.
+  const [entries, setEntries] = useState<SavedEntry[]>(() => {
+    const saved = (location.state as { saved?: SavedEntry } | null)?.saved
+    return saved ? [saved] : []
+  })
+  const navigate = useNavigate()
+  const hasState = location.state !== null
+  // Limpa o estado do histórico para a frase não reaparecer ao recarregar a página.
+  useEffect(() => {
+    if (hasState) navigate('.', { replace: true, state: null })
+  }, [hasState, navigate])
 
   function submit(text: string): boolean {
     if (!hints.data) return false
