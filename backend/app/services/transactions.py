@@ -31,7 +31,7 @@ from app.models import (
     TransactionType,
 )
 from app.repositories import get_owned
-from app.services import cards, invoices, ledger
+from app.services import card_ledger, cards, invoices, ledger
 from app.services.accounts import get_active_account
 from app.services.audit import jsonable, record, snapshot
 from app.services.categories import get_active_category, get_unclassified
@@ -225,6 +225,19 @@ def _negative_balance_notices(
     return notices
 
 
+def _card_limit_notices(session: Session, ctx: RequestContext, card: Card) -> list[Notice]:
+    """Compra no cartão não tira dinheiro de conta; o aviso é sobre o limite (não bloqueia)."""
+    available = card_ledger.limit_status(session, card, ctx.today()).available
+    if available >= 0:
+        return []
+    return [
+        Notice(
+            "credit_limit_exceeded",
+            f"O limite do cartão {card.name} ficou negativo em {format_brl(-available)}.",
+        )
+    ]
+
+
 # --- criação --------------------------------------------------------------------------------
 
 
@@ -373,8 +386,8 @@ def create_transaction(
         return raced
     if card is not None:
         invoices.bill_purchase(session, ctx, tx, card)
+        return WriteResult(tx, notices=_card_limit_notices(session, ctx, card))
     spends = tx.type in (TransactionType.EXPENSE, TransactionType.TRANSFER)
-    # Compra no cartão não tira dinheiro de conta (não tem account_id).
     outflow = [tx.account_id] if spends and tx.account_id is not None else []
     as_of = max(ctx.today(), tx.occurred_on)
     return WriteResult(tx, notices=_negative_balance_notices(session, ctx, outflow, as_of))

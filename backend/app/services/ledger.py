@@ -11,7 +11,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import and_, case, func, or_, select, union_all
 from sqlalchemy.orm import Session
 
 from app.domain.dates import month_range
@@ -22,6 +22,9 @@ from app.models import (
     Account,
     Card,
     Category,
+    InvoiceItem,
+    InvoiceItemKind,
+    ItemStatus,
     Merchant,
     PaymentMethod,
     Transaction,
@@ -103,9 +106,17 @@ class MonthSummary:
 
 
 def month_summary(session: Session, user_id: UUID, year: int, month: int) -> MonthSummary:
-    """Receitas e consumo do mês. Consumo = despesas - estornos (pela data de cada lançamento).
+    """Receitas e consumo do mês, por categoria (só lançamentos confirmados).
 
-    Transferências nunca entram em receitas nem em consumo.
+    Consumo do mês =
+        + despesas via conta e despesas à vista no cartão, pela data
+        + parcelas ativas de compras parceladas no cartão, pelo mês de cada parcela (A3)
+        + encargos do cartão, pela data
+        − estornos via conta, pela data
+        − estornos no cartão, pela data, sem o valor das parcelas que cada um cancelou
+          (parcela cancelada já deixa de contar no seu próprio mês)
+
+    Transferências, pagamentos de fatura e saldos iniciais/levados adiante nunca entram.
     """
     start, end = month_range(year, month)
     in_month = (
@@ -113,16 +124,45 @@ def month_summary(session: Session, user_id: UUID, year: int, month: int) -> Mon
         _CONFIRMED,
         Transaction.occurred_on.between(start, end),
     )
-    signed = case(
-        (Transaction.type == TransactionType.EXPENSE, Transaction.amount),
-        else_=-Transaction.amount,
+    cancelled = (
+        select(func.coalesce(func.sum(InvoiceItem.amount), 0))
+        .where(InvoiceItem.cancelled_by_id == Transaction.id)
+        .scalar_subquery()
     )
-    total = func.sum(signed)
+    by_date = select(
+        Transaction.category_id.label("category_id"),
+        case(
+            (Transaction.type == TransactionType.REFUND, -(Transaction.amount - cancelled)),
+            else_=Transaction.amount,
+        ).label("amount"),
+    ).where(
+        *in_month,
+        or_(
+            and_(Transaction.type == TransactionType.EXPENSE, Transaction.installments.is_(None)),
+            Transaction.type.in_([TransactionType.CHARGE, TransactionType.REFUND]),
+        ),
+    )
+    installments = (
+        select(
+            Transaction.category_id.label("category_id"),
+            InvoiceItem.amount.label("amount"),
+        )
+        .select_from(InvoiceItem)
+        .join(Transaction, Transaction.id == InvoiceItem.transaction_id)
+        .where(
+            Transaction.user_id == user_id,
+            _CONFIRMED,
+            Transaction.installments.is_not(None),
+            InvoiceItem.kind == InvoiceItemKind.PURCHASE,
+            InvoiceItem.status == ItemStatus.ACTIVE,
+            InvoiceItem.consumption_month == start,
+        )
+    )
+    parts = union_all(by_date, installments).subquery()
+    total = func.sum(parts.c.amount)
     rows = session.execute(
         select(Category.id, Category.name, total)
-        .select_from(Transaction)
-        .join(Category, Category.id == Transaction.category_id)
-        .where(*in_month, Transaction.type.in_([TransactionType.EXPENSE, TransactionType.REFUND]))
+        .join(parts, parts.c.category_id == Category.id)
         .group_by(Category.id, Category.name)
         .order_by(total.desc(), Category.name)
     ).all()

@@ -47,11 +47,6 @@ class CardArchiveResult:
     notices: list[Notice] = field(default_factory=list)
 
 
-def open_invoice_month(card: Card, today: date) -> date:
-    """Mês da fatura aberta hoje (a que recebe uma compra feita hoje)."""
-    return invoice_month_for(today, card.closing_day, card.due_day)
-
-
 def opening_invoice_month(card: Card) -> date:
     """Mês da fatura aberta no início do cartão (a que contém `opening_date`)."""
     return invoice_month_for(card.opening_date, card.closing_day, card.due_day)
@@ -161,7 +156,7 @@ def _recalculate_cycle(session: Session, ctx: RequestContext, card: Card) -> Non
         )
         record(session, ctx, invoice, AuditAction.UPDATE, before)
 
-    earliest_open = open_invoice_month(card, today)
+    earliest_open = card_ledger.open_invoice_month(card, today)
     cash_purchases = session.execute(
         select(InvoiceItem, Transaction.occurred_on)
         .join(Transaction, Transaction.id == InvoiceItem.transaction_id)
