@@ -1,6 +1,6 @@
-import { type FormEvent, type ReactNode, useId, useRef, useState } from 'react'
+import { type FormEvent, useId, useState } from 'react'
 
-import { ApiError, newIdempotencyKey } from '../../api/client'
+import { ApiError } from '../../api/client'
 import { api } from '../../api/endpoints'
 import { useCategories, useEntryHints, useInvalidateLedger } from '../../api/queries'
 import type {
@@ -12,11 +12,18 @@ import type {
   TransactionWriteOut,
   TransferIn,
 } from '../../api/types'
+import { useIdempotencyKey } from '../../api/useIdempotencyKey'
 import { PAYMENT_METHOD_LABELS, TRANSACTION_TYPE_LABELS } from '../../domain/labels'
 import { isPositive, toInputAmount, tryParseMoney } from '../../domain/money'
 import type { PaymentMethod } from '../../domain/parser'
+import { Field, invalid } from '../../ui/Field'
 import { MoneyInput } from '../../ui/MoneyInput'
-import { errorTextClass, fieldLabelClass, inputClass, primaryButtonClass } from '../../ui/styles'
+import {
+  errorTextClass,
+  inputClass,
+  primaryButtonClass,
+  secondaryButtonClass,
+} from '../../ui/styles'
 
 type NewType = Exclude<TransactionType, 'REFUND'>
 type Errors = Record<string, string>
@@ -110,17 +117,16 @@ function newBody(f: Fields, amount: string, date: string): ExpenseIn | IncomeIn 
 interface Props {
   initial?: TransactionOut
   onDone: (result: TransactionWriteOut) => void
+  onCancel?: () => void
 }
 
 /** Formulário com todos os campos: cria despesa, receita ou transferência, ou edita um lançamento. */
-export function TransactionForm({ initial, onDone }: Props) {
+export function TransactionForm({ initial, onDone, onCancel }: Props) {
   const id = useId()
   const hints = useEntryHints()
   const categories = useCategories()
   const invalidate = useInvalidateLedger()
-  // Mesma regra do cartão de confirmação: "Salvar" de novo com os mesmos dados reaproveita a
-  // chave (não duplica o lançamento); mudar algum campo depois da falha é um lançamento novo.
-  const lastAttempt = useRef<{ key: string; body: string } | null>(null)
+  const keyFor = useIdempotencyKey()
   const [f, setF] = useState<Fields>(() => fieldsOf(initial))
   const [errors, setErrors] = useState<Errors>({})
   const [detail, setDetail] = useState<string | null>(null)
@@ -169,11 +175,7 @@ export function TransactionForm({ initial, onDone }: Props) {
       request = api.updateTransaction(initial.id, patch)
     } else {
       const body = newBody(f, amount, date)
-      const serialized = JSON.stringify(body)
-      if (lastAttempt.current?.body !== serialized) {
-        lastAttempt.current = { key: newIdempotencyKey(), body: serialized }
-      }
-      request = api.createTransaction(body, lastAttempt.current.key)
+      request = api.createTransaction(body, keyFor(body))
     }
 
     setSaving(true)
@@ -366,39 +368,16 @@ export function TransactionForm({ initial, onDone }: Props) {
           {detail}
         </p>
       )}
-      <button type="submit" disabled={saving || !hints.data} className={`${primaryButtonClass} self-start`}>
-        {editing ? 'Salvar alterações' : 'Salvar lançamento'}
-      </button>
+      <div className="flex gap-2">
+        <button type="submit" disabled={saving || !hints.data} className={primaryButtonClass}>
+          {editing ? 'Salvar alterações' : 'Salvar lançamento'}
+        </button>
+        {onCancel && (
+          <button type="button" onClick={onCancel} className={secondaryButtonClass}>
+            Cancelar
+          </button>
+        )}
+      </div>
     </form>
-  )
-}
-
-function invalid(id: string, error: string | undefined) {
-  return error ? { 'aria-invalid': true, 'aria-describedby': `${id}-error` } : {}
-}
-
-function Field({
-  id,
-  label,
-  error,
-  children,
-}: {
-  id: string
-  label: string
-  error?: string
-  children: ReactNode
-}) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={id} className={fieldLabelClass}>
-        {label}
-      </label>
-      {children}
-      {error && (
-        <p id={`${id}-error`} className={errorTextClass}>
-          {error}
-        </p>
-      )}
-    </div>
   )
 }

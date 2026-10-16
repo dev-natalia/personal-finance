@@ -23,8 +23,12 @@ export function useEntryHints() {
   return useQuery({ queryKey: queryKeys.hints, queryFn: api.entryHints })
 }
 
-export function useAccounts() {
-  return useQuery({ queryKey: queryKeys.accounts, queryFn: () => api.accounts() })
+/** Com `includeArchived`, inclui as arquivadas (nomes de lançamentos antigos, filtros). */
+export function useAccounts(includeArchived = false) {
+  return useQuery({
+    queryKey: includeArchived ? [...queryKeys.accounts, 'all'] : queryKeys.accounts,
+    queryFn: () => api.accounts(includeArchived),
+  })
 }
 
 export function useBalances() {
