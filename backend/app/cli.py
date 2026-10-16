@@ -2,6 +2,7 @@
 
 import argparse
 import getpass
+import io
 import os
 import sys
 from collections.abc import Sequence
@@ -63,6 +64,10 @@ def run(argv: Sequence[str] | None, session: Session) -> int:
 
 
 def main() -> None:
+    # Terminais do Windows (ex.: Git Bash) recebem cp1252 por padrão e quebram os acentos.
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8")
     settings = get_settings()
     factory = make_sessionmaker(make_engine(settings.database_url))
     with factory() as session:
