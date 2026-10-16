@@ -16,10 +16,12 @@ export interface Names {
 export function describeSaved(tx: TransactionOut, names: Names): string {
   const amount = formatBRL(tx.amount)
   const category = (tx.category_id && names.categories.get(tx.category_id)) || 'A classificar'
+  // "em A classificar" soa estranho: sem categoria definida, a frase diz isso.
+  const where = category === 'A classificar' ? ', ainda sem categoria' : ` em ${category}`
   const account = names.accounts.get(tx.account_id) ?? 'conta'
   if (tx.type === 'INCOME') {
-    return `Receita registrada: ${amount} em ${category}, recebida na ${account}.`
+    return `Receita registrada: ${amount}${where}, recebida na ${account}.`
   }
   const method = tx.payment_method ? PAYMENT_METHOD_LABELS[tx.payment_method] : 'Outro'
-  return `Despesa registrada: ${amount} em ${category}, paga com ${method} ${account}.`
+  return `Despesa registrada: ${amount}${where}, paga com ${method} ${account}.`
 }

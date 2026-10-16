@@ -75,7 +75,7 @@ test('wrong password shows the server message', async () => {
 
 test('navigation exposes the main sections', async () => {
   server.use(http.get('/api/v1/auth/me', () => HttpResponse.json(USER)))
-  renderWithProviders(<AppRoutes />, { route: '/' })
+  renderWithProviders(<AppRoutes />, { route: '/mais' })
   const nav = await screen.findByRole('navigation', { name: 'Principal' })
   for (const name of ['Início', 'Lançamentos', 'Contas', 'Mais']) {
     expect(nav).toContainElement(screen.getByRole('link', { name }))
