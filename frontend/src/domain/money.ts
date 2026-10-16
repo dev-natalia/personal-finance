@@ -63,6 +63,15 @@ export function tryParseMoney(text: string): string | null {
   }
 }
 
+/** Como `tryParseMoney`, mas aceita um "-" inicial (saldo de abertura no cheque especial). */
+export function tryParseSignedMoney(text: string): string | null {
+  const trimmed = text.trim()
+  const negative = trimmed.startsWith('-')
+  const amount = tryParseMoney(negative ? trimmed.slice(1) : trimmed)
+  if (amount === null) return null
+  return negative && /[1-9]/.test(amount) ? `-${amount}` : amount
+}
+
 /** Verdadeiro se a string canônica tem algum dígito diferente de zero. */
 export function isPositive(amount: string): boolean {
   return !amount.startsWith('-') && /[1-9]/.test(amount)

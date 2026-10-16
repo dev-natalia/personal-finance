@@ -3,7 +3,15 @@ import { resolve } from 'node:path'
 
 import { describe, expect, test } from 'vitest'
 
-import { InvalidMoney, formatBRL, isPositive, parseMoney, toInputAmount, tryParseMoney } from './money'
+import {
+  InvalidMoney,
+  formatBRL,
+  isPositive,
+  parseMoney,
+  toInputAmount,
+  tryParseMoney,
+  tryParseSignedMoney,
+} from './money'
 
 describe('parseMoney', () => {
   test.each([
@@ -77,4 +85,13 @@ test('toInputAmount uses the Brazilian decimal comma', () => {
 test('money module never converts money to number', () => {
   const source = readFileSync(resolve(process.cwd(), 'src/domain/money.ts'), 'utf-8')
   expect(source).not.toMatch(/parseFloat|Number\(|toFixed/)
+})
+
+test('tryParseSignedMoney accepts a leading minus', () => {
+  expect(tryParseSignedMoney('-250')).toBe('-250.00')
+  expect(tryParseSignedMoney(' -1.234,5')).toBe('-1234.50')
+  expect(tryParseSignedMoney('1.000,50')).toBe('1000.50')
+  expect(tryParseSignedMoney('-0')).toBe('0.00')
+  expect(tryParseSignedMoney('--5')).toBeNull()
+  expect(tryParseSignedMoney('abc')).toBeNull()
 })
