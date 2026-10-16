@@ -45,6 +45,24 @@
         "APP_ORIGIN": "http://localhost:8001"
       },
       "port": 8001
+    },
+    {
+      "name": "backend-e2e",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": [
+        "--directory",
+        "backend",
+        "run",
+        "uvicorn",
+        "--factory",
+        "app.main:create_app",
+        "--port",
+        "8000"
+      ],
+      "env": {
+        "DATABASE_URL": "postgresql+psycopg://finance:finance@127.0.0.1:5433/finance_e2e"
+      },
+      "port": 8000
     }
   ]
 }

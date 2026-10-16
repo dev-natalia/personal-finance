@@ -17,6 +17,7 @@ export function FullFormPage() {
       line: describeSaved(result.transaction, {
         accounts: new Map((hints.data?.accounts ?? []).map((a) => [a.id, a.name])),
         categories: new Map((categories.data ?? []).map((c) => [c.id, c.name])),
+        cards: new Map((hints.data?.cards ?? []).map((c) => [c.id, c.name])),
       }),
       warnings: (result.warnings ?? []).map((w) => w.detail),
     }

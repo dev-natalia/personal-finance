@@ -6,7 +6,7 @@
  * último envio gera chave nova (é outra intenção). Editar e desfazer não muda nada.
  */
 import { newIdempotencyKey } from '../../api/client'
-import type { ExpenseIn, IncomeIn } from '../../api/types'
+import type { ExpenseIn, IncomeIn, PreviewIn } from '../../api/types'
 import { isPositive, toInputAmount, tryParseMoney } from '../../domain/money'
 import type { EntryType, ParsedItem, PaymentMethod, PendingField } from '../../domain/parser'
 
@@ -25,6 +25,10 @@ export interface CardItem {
   description: string
   occurredOn: string
   accountId: string | null
+  /** Compra no cartão: `accountId` nulo e meio `CREDIT`. */
+  cardId: string | null
+  /** Parcelas no cartão; nulo = à vista. */
+  installments: number | null
   paymentMethod: PaymentMethod | null
   /** Só quando a usuária escolheu; `null` mantém a sugestão (e não ensina a memória). */
   categoryId: string | null
@@ -37,7 +41,14 @@ export interface CardItem {
 
 export type EditableFields = Pick<
   CardItem,
-  'amountText' | 'description' | 'occurredOn' | 'accountId' | 'paymentMethod' | 'categoryId'
+  | 'amountText'
+  | 'description'
+  | 'occurredOn'
+  | 'accountId'
+  | 'cardId'
+  | 'installments'
+  | 'paymentMethod'
+  | 'categoryId'
 >
 
 export type CardAction =
@@ -59,6 +70,8 @@ export function initCard(parsed: ParsedItem[]): CardItem[] {
     description: item.description ?? '',
     occurredOn: item.occurredOn,
     accountId: item.accountId,
+    cardId: item.cardId,
+    installments: item.installments,
     paymentMethod: item.paymentMethod,
     categoryId: null,
     status: 'draft',
@@ -106,8 +119,12 @@ export function missingFields(item: CardItem): PendingField[] {
   const missing: PendingField[] = []
   if (amountOf(item) === null) missing.push('amount')
   if (item.description.trim() === '') missing.push('description')
+  if (item.type === 'EXPENSE' && item.cardId !== null) return missing
   if (item.accountId === null) missing.push('account')
-  if (item.type === 'EXPENSE' && item.paymentMethod === null) missing.push('paymentMethod')
+  // Crédito é só do cartão: numa conta, o meio ainda falta.
+  if (item.type === 'EXPENSE' && (item.paymentMethod === null || item.paymentMethod === 'CREDIT')) {
+    missing.push('paymentMethod')
+  }
   return missing
 }
 
@@ -122,19 +139,42 @@ export function canConfirm(items: CardItem[]): boolean {
 
 export function toRequestBody(item: CardItem): IncomeIn | ExpenseIn {
   const amount = amountOf(item)
-  if (amount === null || item.accountId === null || item.description.trim() === '') {
+  if (amount === null || item.description.trim() === '') {
     throw new Error('Item incompleto não pode ser enviado.')
   }
-  const base = {
+  const common = {
     amount,
     occurred_on: item.occurredOn,
     description: item.description.trim(),
-    account_id: item.accountId,
     ...(item.categoryId !== null ? { category_id: item.categoryId } : {}),
   }
+  if (item.type === 'EXPENSE' && item.cardId !== null) {
+    return {
+      type: 'EXPENSE',
+      ...common,
+      card_id: item.cardId,
+      ...(item.installments !== null ? { installments: item.installments } : {}),
+    }
+  }
+  if (item.accountId === null) throw new Error('Item incompleto não pode ser enviado.')
+  const base = { ...common, account_id: item.accountId }
   if (item.type === 'INCOME') return { type: 'INCOME', ...base }
   if (item.paymentMethod === null) throw new Error('Despesa sem meio de pagamento.')
   return { type: 'EXPENSE', ...base, payment_method: item.paymentMethod }
+}
+
+/** O que pedir à prévia do cartão (impacto na fatura e no limite), ou nulo se não cabe. */
+export function previewInput(item: CardItem): { cardId: string; body: PreviewIn } | null {
+  const amount = amountOf(item)
+  if (item.type !== 'EXPENSE' || item.cardId === null || amount === null) return null
+  return {
+    cardId: item.cardId,
+    body: {
+      amount,
+      occurred_on: item.occurredOn,
+      ...(item.installments !== null ? { installments: item.installments } : {}),
+    },
+  }
 }
 
 /** Corpo e chave do envio: mesma chave para o mesmo conteúdo, chave nova se ele mudou. */

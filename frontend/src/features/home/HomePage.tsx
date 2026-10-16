@@ -65,11 +65,10 @@ export function HomePage() {
 
   function submit(value: string) {
     if (!hints.data) return
-    // Cartões entram no interpretador junto com o comprovante de cartão (plano 2, Tarefa 11).
     const parsed = parseEntry(value, {
       today: hints.data.today,
       accounts: hints.data.accounts,
-      cards: [],
+      cards: hints.data.cards,
     })
     if (parsed.length === 0) return
     setCard({ id: Date.now(), parsed, text: value, today: hints.data.today })

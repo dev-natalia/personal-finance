@@ -10,6 +10,7 @@ export interface SavedEntry {
 export interface Names {
   accounts: Map<string, string>
   categories: Map<string, string>
+  cards: Map<string, string>
 }
 
 /** Frase de confirmação montada a partir do que o backend gravou (nunca do que foi digitado). */
@@ -27,6 +28,11 @@ export function describeSaved(tx: TransactionOut, names: Names): string {
   const account = accountName(tx.account_id)
   if (tx.type === 'INCOME') {
     return `Receita registrada: ${amount}${where}, recebida na ${account}.`
+  }
+  if (tx.card_id) {
+    const card = names.cards.get(tx.card_id) ?? 'cartão'
+    const split = tx.installments ? ` em ${tx.installments}x` : ''
+    return `Despesa registrada: ${amount}${where}, no crédito ${card}${split}.`
   }
   const method = tx.payment_method ? PAYMENT_METHOD_LABELS[tx.payment_method] : 'Outro'
   return `Despesa registrada: ${amount}${where}, paga com ${method} ${account}.`

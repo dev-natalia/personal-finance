@@ -23,6 +23,26 @@ function makeDate(year: number, month: number, day: number): string | null {
   return valid ? format(date) : null
 }
 
+const MONTH_NAMES = [
+  'janeiro',
+  'fevereiro',
+  'março',
+  'abril',
+  'maio',
+  'junho',
+  'julho',
+  'agosto',
+  'setembro',
+  'outubro',
+  'novembro',
+  'dezembro',
+]
+
+/** "2026-11-01" → "novembro" (para "fatura de novembro"). */
+export function monthName(iso: string): string {
+  return MONTH_NAMES[Number(iso.slice(5, 7)) - 1] ?? ''
+}
+
 export function addDays(iso: string, days: number): string {
   const [year, month, day] = parts(iso)
   return format(new Date(Date.UTC(year, month - 1, day + days)))

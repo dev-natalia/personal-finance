@@ -5,7 +5,14 @@ import type { CategoryOut, EntryHintsOut } from '../../api/types'
 import { PAYMENT_METHOD_LABELS, isAccountMethod } from '../../domain/labels'
 import type { PaymentMethod, PendingField } from '../../domain/parser'
 import { chipClass, errorTextClass, inputClass } from '../../ui/styles'
-import { type CardAction, type CardItem, type EditableFields, missingFields } from './cardState'
+import { CardImpact } from './CardImpact'
+import {
+  type CardAction,
+  type CardItem,
+  type EditableFields,
+  missingFields,
+  previewInput,
+} from './cardState'
 
 const PENDING_LABELS: Record<PendingField, string> = {
   amount: 'valor',
@@ -160,6 +167,8 @@ export function ItemEditor({ item, index, total, hints, categories, dispatch, lo
 
 type Edit = (patch: Partial<EditableFields>) => void
 
+const INSTALLMENT_CHOICES = Array.from({ length: 23 }, (_, k) => k + 2)
+
 function PaymentFields({
   item,
   hints,
@@ -171,22 +180,35 @@ function PaymentFields({
   id: string
   edit: Edit
 }) {
+  const accountMethod = item.paymentMethod === 'CREDIT' ? null : item.paymentMethod
+  const useCard = (cardId: string) => edit({ cardId, accountId: null, paymentMethod: 'CREDIT' })
+  const useAccount = (accountId: string | null, paymentMethod: PaymentMethod | null) =>
+    edit({ accountId, cardId: null, installments: null, paymentMethod })
+  const source = item.cardId ? `card:${item.cardId}` : item.accountId ? `account:${item.accountId}` : ''
+
+  function chooseSource(value: string) {
+    if (value.startsWith('card:')) useCard(value.slice('card:'.length))
+    else useAccount(value ? value.slice('account:'.length) : null, accountMethod)
+  }
+
   return (
     <fieldset>
       <legend className="mb-2 text-sm">Como você pagou?</legend>
       <div className="mb-2 flex flex-wrap gap-2">
-        {/* Atalhos de cartão entram junto com o pagamento no cartão (plano 2, Tarefa 11). */}
-        {hints.top_payment_options.flatMap((option) => {
-          if (option.account_id === null) return []
-          const pressed =
-            item.accountId === option.account_id && item.paymentMethod === option.payment_method
+        {hints.top_payment_options.map((option) => {
+          const card = option.card_id
+          const pressed = card
+            ? item.cardId === card
+            : item.cardId === null &&
+              item.accountId === option.account_id &&
+              item.paymentMethod === option.payment_method
           return (
             <button
-              key={`${option.account_id}-${option.payment_method}`}
+              key={card ? `card-${card}` : `${option.account_id}-${option.payment_method}`}
               type="button"
               aria-pressed={pressed}
               onClick={() =>
-                edit({ accountId: option.account_id, paymentMethod: option.payment_method })
+                card ? useCard(card) : useAccount(option.account_id, option.payment_method)
               }
               className={chipClass}
             >
@@ -195,27 +217,71 @@ function PaymentFields({
           )
         })}
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm text-ink-soft">
-          Conta
-          <AccountSelect id={`${id}-account`} item={item} hints={hints} edit={edit} />
-        </label>
-        <label className="flex flex-col gap-1 text-sm text-ink-soft">
-          Meio
+          Conta ou cartão
           <select
-            value={item.paymentMethod ?? ''}
-            onChange={(e) => edit({ paymentMethod: (e.target.value || null) as PaymentMethod | null })}
+            id={`${id}-account`}
+            value={source}
+            onChange={(e) => chooseSource(e.target.value)}
             className={slipInput}
           >
             <option value="">Escolha</option>
-            {hints.payment_methods.filter(isAccountMethod).map((method) => (
-              <option key={method} value={method}>
-                {PAYMENT_METHOD_LABELS[method]}
-              </option>
-            ))}
+            <optgroup label="Contas">
+              {hints.accounts.map((account) => (
+                <option key={account.id} value={`account:${account.id}`}>
+                  {account.name}
+                </option>
+              ))}
+            </optgroup>
+            {hints.cards.length > 0 && (
+              <optgroup label="Cartões">
+                {hints.cards.map((card) => (
+                  <option key={card.id} value={`card:${card.id}`}>
+                    {PAYMENT_METHOD_LABELS.CREDIT} {card.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </label>
+        {item.cardId ? (
+          <label className="flex flex-col gap-1 text-sm text-ink-soft">
+            Parcelas
+            <select
+              value={item.installments ?? ''}
+              onChange={(e) => edit({ installments: e.target.value ? Number(e.target.value) : null })}
+              className={slipInput}
+            >
+              <option value="">À vista</option>
+              {INSTALLMENT_CHOICES.map((count) => (
+                <option key={count} value={count}>
+                  {count}x
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <label className="flex flex-col gap-1 text-sm text-ink-soft">
+            Meio
+            <select
+              value={accountMethod ?? ''}
+              onChange={(e) =>
+                edit({ paymentMethod: (e.target.value || null) as PaymentMethod | null })
+              }
+              className={slipInput}
+            >
+              <option value="">Escolha</option>
+              {hints.payment_methods.filter(isAccountMethod).map((method) => (
+                <option key={method} value={method}>
+                  {PAYMENT_METHOD_LABELS[method]}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
+      <CardImpact input={previewInput(item)} />
     </fieldset>
   )
 }

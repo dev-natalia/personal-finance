@@ -6,7 +6,7 @@ import { expect, test, vi } from 'vitest'
 import type { ExpenseIn, TransactionWriteOut } from '../../api/types'
 import type { ParsedItem } from '../../domain/parser'
 import { expectNoA11yViolations } from '../../test/axe'
-import { CATEGORIES, HINTS, TODAY, transaction } from '../../test/fixtures'
+import { CARDS, CATEGORIES, HINTS, PREVIEW, TODAY, transaction } from '../../test/fixtures'
 import { renderWithProviders } from '../../test/render'
 import { server } from '../../test/server'
 import { ConfirmationCard } from './ConfirmationCard'
@@ -47,6 +47,7 @@ function mockApi(reply: Reply = () => created(), duplicates: Record<number, numb
     http.get('/api/v1/accounts/balances', () => HttpResponse.json({})),
     http.get('/api/v1/transactions', () => HttpResponse.json({ items: [], next_cursor: null })),
     http.get('/api/v1/entry-hints', () => HttpResponse.json(HINTS)),
+    http.post('/api/v1/cards/:id/preview', () => HttpResponse.json(PREVIEW)),
     http.post('/api/v1/entry-checks', async ({ request }) => {
       const { items } = (await request.json()) as { items: unknown[] }
       return HttpResponse.json({
@@ -237,4 +238,134 @@ test('account method choices never offer credit', async () => {
   const labels = Array.from(method.querySelectorAll('option')).map((o) => o.textContent)
   expect(labels).not.toContain('Crédito')
   expect(labels).toContain('Pix')
+})
+
+
+// --- cartão --------------------------------------------------------------------------------
+
+const onCard = (overrides: Partial<ParsedItem> = {}) =>
+  parsed({
+    raw: '1200 celular crédito nubank 6x',
+    amount: '1200.00',
+    description: 'celular',
+    accountId: null,
+    cardId: CARDS.nubank.id,
+    paymentMethod: 'CREDIT',
+    installments: 6,
+    ...overrides,
+  })
+
+test('card item posts card_id and installments without account', async () => {
+  const sent = mockApi()
+  const { user, onClose } = renderCard([onCard()])
+  await user.click(await screen.findByRole('button', { name: 'Confirmar' }))
+  await waitFor(() => expect(onClose).toHaveBeenCalled())
+  expect(sent[0]!.body).toEqual({
+    type: 'EXPENSE',
+    amount: '1200.00',
+    occurred_on: TODAY,
+    description: 'celular',
+    card_id: CARDS.nubank.id,
+    installments: 6,
+  })
+})
+
+test('shows invoice and limit impact from the preview', async () => {
+  mockApi()
+  renderCard([onCard()])
+  expect(await screen.findByText('Fatura de novembro: R$ 1.240,00 → R$ 1.440,00')).toBeInTheDocument()
+  expect(screen.getByText('Limite disponível: R$ 1.560,00 → R$ 360,00')).toBeInTheDocument()
+  expect(screen.getByText('Limite não é dinheiro.')).toBeInTheDocument()
+})
+
+test('installment impact opens next invoices on demand', async () => {
+  mockApi()
+  const { user } = renderCard([onCard()])
+  const summary = await screen.findByText('Ver como ficam as próximas faturas')
+  const december = screen.getByText('dezembro: R$ 3.000,00 → R$ 3.200,00')
+  expect(december).not.toBeVisible()
+  await user.click(summary)
+  expect(december).toBeVisible()
+})
+
+test('over limit shows warning without blocking', async () => {
+  mockApi()
+  server.use(
+    http.post('/api/v1/cards/:id/preview', () =>
+      HttpResponse.json({ ...PREVIEW, limit_after: '-200.00' }),
+    ),
+  )
+  renderCard([onCard()])
+  expect(await screen.findByText('Esta compra passa do limite em R$ 200,00.')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Confirmar' })).toBeEnabled()
+})
+
+test('preview failure shows no numbers', async () => {
+  mockApi()
+  server.use(
+    http.post('/api/v1/cards/:id/preview', () =>
+      HttpResponse.json({ status: 500, code: 'internal_error', detail: 'x' }, { status: 500 }),
+    ),
+  )
+  renderCard([onCard()])
+  expect(
+    await screen.findByText('Não foi possível calcular o impacto na fatura.'),
+  ).toBeInTheDocument()
+  expect(screen.queryByText(/→/)).not.toBeInTheDocument()
+})
+
+test('choosing the card shortcut fills card and hides method', async () => {
+  mockApi()
+  const { user } = renderCard([
+    parsed({ accountId: null, paymentMethod: null, pending: ['account', 'paymentMethod'] }),
+  ])
+  expect(await screen.findByLabelText('Meio')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Crédito Nubank' }))
+  expect(screen.getByRole('button', { name: 'Crédito Nubank' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  expect(screen.queryByLabelText('Meio')).not.toBeInTheDocument()
+  expect(screen.getByLabelText('Parcelas')).toHaveDisplayValue('À vista')
+  expect(screen.getByLabelText('Conta ou cartão')).toHaveDisplayValue('Crédito Nubank')
+})
+
+test('saved card line adds the invoice total from the preview', async () => {
+  mockApi(() =>
+    HttpResponse.json(
+      {
+        transaction: transaction({
+          amount: '1200.00',
+          description: 'celular',
+          account_id: null,
+          card_id: CARDS.nubank.id,
+          payment_method: 'CREDIT',
+          installments: 6,
+          category_id: 'cat-unclassified-expense',
+        }),
+        replayed: false,
+        warnings: [],
+      },
+      { status: 201 },
+    ),
+  )
+  const { user, onSaved } = renderCard([onCard()])
+  await screen.findByText('Fatura de novembro: R$ 1.240,00 → R$ 1.440,00')
+  await user.click(screen.getByRole('button', { name: 'Confirmar' }))
+  await waitFor(() => expect(onSaved).toHaveBeenCalled())
+  expect(onSaved.mock.calls[0]![0]).toEqual([
+    {
+      line:
+        'Despesa registrada: R$ 1.200,00, ainda sem categoria, no crédito Nubank em 6x. ' +
+        'Fatura de novembro: R$ 1.440,00.',
+      warnings: [],
+    },
+  ])
+})
+
+test('confirmation card with card has no accessibility violations', async () => {
+  mockApi()
+  const { container } = renderCard([onCard()])
+  await screen.findByText('Limite não é dinheiro.')
+  await expectNoA11yViolations(container)
 })
