@@ -1,7 +1,7 @@
 # Subprojeto 2 — Cartões e faturas
 
 Data: 2026-10-16
-Status: aguardando aprovação da usuária
+Status: aprovado
 Referências: `2026-10-15-visao-geral-design.md` (decisões globais A1–A14, três visões financeiras), `2026-10-15-fundacao-e-lancamentos-design.md` (modelo, API, frontend e padrões do subprojeto 1, já na `main`).
 
 ## 1. Objetivo
