@@ -18,7 +18,7 @@ from app.models import (
     TransactionStatus,
     TransactionType,
 )
-from app.services import accounts
+from app.services import accounts, cards
 from app.services.auth import SessionPolicy
 from app.services.context import RequestContext
 
@@ -54,18 +54,15 @@ def make_card(
     due_day: int = 10,
     opening_date: date = date(2026, 10, 1),
 ) -> Card:
-    """Cartão gravado direto pelo ORM (o serviço de cadastro chega na Tarefa 3)."""
-    card = Card(
-        user_id=ctx.user_id,
+    return cards.create_card(
+        db,
+        ctx,
         name=name,
         credit_limit=Decimal(credit_limit),
         closing_day=closing_day,
         due_day=due_day,
         opening_date=opening_date,
     )
-    db.add(card)
-    db.flush()
-    return card
 
 
 def find_category(
