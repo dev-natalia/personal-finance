@@ -38,6 +38,15 @@ def test_root_serves_index_without_cache(spa_client: TestClient) -> None:
     assert response.text == INDEX
 
 
+def test_head_answers_like_get_without_body(spa_client: TestClient) -> None:
+    # Monitores de disponibilidade e balanceadores costumam checar com HEAD.
+    response = spa_client.head("/")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert response.content == b""
+    assert spa_client.head("/assets/app-123.js").status_code == 200
+
+
 def test_spa_route_serves_index(spa_client: TestClient) -> None:
     assert spa_client.get("/lancamentos").text == INDEX
 

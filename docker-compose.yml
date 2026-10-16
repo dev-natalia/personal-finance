@@ -16,5 +16,22 @@ services:
       timeout: 3s
       retries: 10
 
+  # A imagem de produção rodando localmente. Não sobe por padrão:
+  #   SECRET_KEY=<32+ caracteres> docker compose --profile app up -d --build
+  # e abra http://localhost:8080 (a porta 8000 fica livre para o backend de desenvolvimento).
+  app:
+    profiles: [app]
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://finance:finance@db:5432/${APP_DB:-finance}
+      SECRET_KEY: ${SECRET_KEY:-}
+      APP_ORIGIN: http://localhost:8080
+      COOKIE_SECURE: "false"
+    ports:
+      - "127.0.0.1:8080:8000"
+
 volumes:
   pgdata:

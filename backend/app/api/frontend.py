@@ -17,7 +17,8 @@ def install_frontend(app: FastAPI, dist: Path) -> None:
     if not index.is_file():
         raise RuntimeError(f"FRONTEND_DIST não contém index.html: {root}")
 
-    @app.get("/{path:path}", include_in_schema=False)
+    # HEAD também: monitores de disponibilidade e balanceadores costumam checar com ele.
+    @app.api_route("/{path:path}", methods=["GET", "HEAD"], include_in_schema=False)
     def frontend(path: str) -> FileResponse:
         if path == "api" or path.startswith("api/"):
             raise HTTPException(status_code=404)
