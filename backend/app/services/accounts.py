@@ -9,9 +9,10 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.domain.errors import Conflict, Notice, RuleViolation
-from app.domain.money import quantize
+from app.domain.money import format_brl, quantize
 from app.models import Account, AccountType, AuditAction, Transaction, TransactionStatus
 from app.repositories import get_owned, owned_select
+from app.services import ledger
 from app.services.audit import record, snapshot
 from app.services.context import RequestContext
 
@@ -117,4 +118,10 @@ def archive_account(session: Session, ctx: RequestContext, account_id: UUID) -> 
     before = snapshot(account)
     account.archived_at = ctx.now()
     record(session, ctx, account, AuditAction.ARCHIVE, before)
-    return ArchiveResult(account)
+    balance = ledger.account_balances(session, ctx.user_id, ctx.today(), [account.id])[account.id]
+    if balance == 0:
+        return ArchiveResult(account)
+    notice = Notice(
+        "archived_with_balance", f"A conta foi arquivada com saldo de {format_brl(balance)}."
+    )
+    return ArchiveResult(account, [notice])
