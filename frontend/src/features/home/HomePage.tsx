@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
 import { useEntryHints } from '../../api/queries'
@@ -18,6 +18,7 @@ export function HomePage() {
   const [card, setCard] = useState<{ id: number; parsed: ParsedItem[] } | null>(null)
   const location = useLocation()
   // O formulário completo volta para cá com a frase do que foi gravado.
+  const composerRef = useRef<HTMLTextAreaElement>(null)
   const [entries, setEntries] = useState<SavedEntry[]>(() => {
     const saved = (location.state as { saved?: SavedEntry } | null)?.saved
     return saved ? [saved] : []
@@ -54,12 +55,20 @@ export function HomePage() {
           parsed={card.parsed}
           hints={hints.data}
           onSaved={(saved) => setEntries((previous) => [...previous, ...saved])}
-          onClose={() => setCard(null)}
+          onClose={() => {
+            setCard(null)
+            // Sem isto o foco cairia no <body> quando o comprovante some.
+            composerRef.current?.focus()
+          }}
         />
       )}
       {!online && <OfflineBanner />}
       <div className="sticky bottom-16 bg-paper pt-2 md:bottom-0">
-        <Composer onSubmit={submit} disabled={!hints.data || card !== null} />
+        <Composer
+          onSubmit={submit}
+          disabled={!hints.data || card !== null}
+          inputRef={composerRef}
+        />
       </div>
     </div>
   )

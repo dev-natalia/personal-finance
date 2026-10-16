@@ -147,3 +147,15 @@ test('accounts page has no accessibility violations', async () => {
   await screen.findByText('R$ 958,00')
   await expectNoA11yViolations(container)
 })
+
+test('focus returns to the row after editing and to the message after archiving', async () => {
+  mockAccounts()
+  const { user } = renderPage()
+  await user.click(await screen.findByRole('button', { name: 'Editar Itaú' }))
+  const form = screen.getByRole('form', { name: 'Editar Itaú' })
+  await user.click(within(form).getByRole('button', { name: 'Cancelar' }))
+  expect(screen.getByRole('button', { name: 'Editar Itaú' })).toHaveFocus()
+  await user.click(screen.getByRole('button', { name: 'Arquivar Itaú' }))
+  await user.click(screen.getByRole('button', { name: 'Arquivar conta' }))
+  await waitFor(() => expect(screen.getByRole('status')).toHaveFocus())
+})

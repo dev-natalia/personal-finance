@@ -1,11 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { type FormEvent, useId, useState } from 'react'
+import { type FormEvent, useId, useRef, useState } from 'react'
 
 import { ApiError } from '../../api/client'
 import { api } from '../../api/endpoints'
 import { useCategories } from '../../api/queries'
 import type { CategoryKind, CategoryOut } from '../../api/types'
 import { Field, invalid } from '../../ui/Field'
+import { type Announce, useFocusOnReturn, useStatus } from '../../ui/focus'
 import { Page } from '../../ui/Page'
 import {
   errorTextClass,
@@ -34,24 +35,20 @@ function useRefreshCategories(): () => Promise<void> {
 /** `/mais/categorias`: despesas e receitas; as do sistema só podem ser vistas. */
 export function CategoriesPage() {
   const categories = useCategories()
-  const [message, setMessage] = useState<string | null>(null)
+  const { announce, status } = useStatus()
 
   return (
     <Page title="Categorias">
-      {message && (
-        <p role="status" className="mb-2 border-l-4 border-pen bg-slip px-3 py-2 text-sm">
-          {message}
-        </p>
-      )}
+      {status}
       {KINDS.map(([kind, title]) => (
         <KindSection
           key={kind}
           title={title}
           categories={(categories.data ?? []).filter((c) => c.kind === kind)}
-          onMessage={setMessage}
+          onMessage={announce}
         />
       ))}
-      <NewCategoryForm onCreated={(name) => setMessage(`Categoria ${name} criada.`)} />
+      <NewCategoryForm onCreated={(name) => announce(`Categoria ${name} criada.`)} />
     </Page>
   )
 }
@@ -63,7 +60,7 @@ function KindSection({
 }: {
   title: string
   categories: CategoryOut[]
-  onMessage: (message: string) => void
+  onMessage: Announce
 }) {
   const id = useId()
   return (
@@ -85,15 +82,19 @@ function CategoryRow({
   onMessage,
 }: {
   category: CategoryOut
-  onMessage: (message: string) => void
+  onMessage: Announce
 }) {
   const [mode, setMode] = useState<'view' | 'rename' | 'archive'>('view')
   const [essential, setEssential] = useState<boolean | null>(null)
   const [error, setError] = useState<string | null>(null)
   const refresh = useRefreshCategories()
   const editable = !category.is_system
+  const renameRef = useRef<HTMLButtonElement>(null)
+  useFocusOnReturn(mode, renameRef)
 
   async function toggleEssential(checked: boolean) {
+    // Sem `disabled` durante o envio: desabilitar a caixa focada jogaria o foco no <body>.
+    if (essential !== null) return
     setError(null)
     setEssential(checked)
     try {
@@ -110,7 +111,8 @@ function CategoryRow({
     setError(null)
     try {
       await api.archiveCategory(category.id)
-      onMessage(`Categoria ${category.name} arquivada.`)
+      // A categoria some da lista: o foco vai para a mensagem.
+      onMessage(`Categoria ${category.name} arquivada.`, { focus: true })
       await refresh()
     } catch (err) {
       setError(messageOf(err))
@@ -139,7 +141,7 @@ function CategoryRow({
               type="checkbox"
               aria-label={`Essencial (${category.name})`}
               checked={essential ?? category.is_essential}
-              disabled={essential !== null}
+              aria-busy={essential !== null}
               onChange={(e) => toggleEssential(e.target.checked)}
               className="size-5 accent-pen"
             />
@@ -150,6 +152,7 @@ function CategoryRow({
       {editable && mode === 'view' && (
         <div className="-mt-2 -ml-2 flex w-full gap-1">
           <button
+            ref={renameRef}
             type="button"
             aria-label={`Renomear ${category.name}`}
             onClick={() => setMode('rename')}

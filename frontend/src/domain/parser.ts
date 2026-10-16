@@ -54,20 +54,31 @@ interface Token {
 }
 
 export function parseEntry(text: string, ctx: ParseContext): ParsedItem[] {
-  return text
+  const header = dateHeader(text, ctx.today)
+  return (header ? header.rest : text)
     .split(/[;\n]/)
     .map((part) => part.trim())
     .filter((part) => part.length > 0)
-    .map((part) => parseItem(part, ctx))
+    .map((part) => parseItem(part, ctx, header?.date ?? ctx.today))
 }
 
-function parseItem(raw: string, ctx: ParseContext): ParsedItem {
+/** "dia 3: 35 ifood; 18 uber": uma data antes dos dois-pontos vale para o lote inteiro. */
+function dateHeader(text: string, today: string): { date: string; rest: string } | null {
+  const match = /^\s*([^;\n:]+):/.exec(text)
+  if (!match) return null
+  const words = match[1]!.trim().split(/\s+/).map(normalize)
+  const date = matchDate(words, 0, today)
+  if (!date || date.consumed !== words.length) return null
+  return { date: date.date, rest: text.slice(match[0].length) }
+}
+
+function parseItem(raw: string, ctx: ParseContext, defaultDate: string): ParsedItem {
   const tokens: Token[] = raw
     .split(/\s+/)
     .map((original) => ({ original, word: normalize(original), used: false }))
 
   const type = takeType(tokens)
-  const occurredOn = takeDate(tokens, ctx.today)
+  const occurredOn = takeDate(tokens, ctx.today) ?? defaultDate
   const amount = takeAmount(tokens)
   let accountId = takeAccount(tokens, ctx.accounts)
   let paymentMethod = type === 'EXPENSE' ? takeMethod(tokens) : null
@@ -109,7 +120,7 @@ function takeType(tokens: Token[]): EntryType {
   return 'EXPENSE'
 }
 
-function takeDate(tokens: Token[], today: string): string {
+function takeDate(tokens: Token[], today: string): string | null {
   const words = tokens.map((t) => (t.used ? '' : t.word))
   for (let index = 0; index < tokens.length; index++) {
     const match = matchDate(words, index, today)
@@ -118,7 +129,7 @@ function takeDate(tokens: Token[], today: string): string {
       return match.date
     }
   }
-  return today
+  return null
 }
 
 function takeAmount(tokens: Token[]): string | null {

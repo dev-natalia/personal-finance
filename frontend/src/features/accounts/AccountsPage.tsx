@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { type FormEvent, useId, useState } from 'react'
+import { type FormEvent, useId, useRef, useState } from 'react'
 
 import { ApiError, type FieldError } from '../../api/client'
 import { api } from '../../api/endpoints'
@@ -8,6 +8,7 @@ import type { AccountOut } from '../../api/types'
 import { firstDayOfMonth } from '../../domain/dates'
 import { ACCOUNT_TYPE_LABELS } from '../../domain/labels'
 import { formatBRL, tryParseSignedMoney } from '../../domain/money'
+import { type Announce, useFocusOnReturn, useStatus } from '../../ui/focus'
 import { MoneyInput } from '../../ui/MoneyInput'
 import { Page } from '../../ui/Page'
 import {
@@ -48,7 +49,7 @@ function useRefreshAccounts(): () => Promise<void> {
 export function AccountsPage() {
   const accounts = useAccounts()
   const balances = useBalances()
-  const [message, setMessage] = useState<string | null>(null)
+  const { announce, status } = useStatus()
   const balanceOf = new Map((balances.data?.accounts ?? []).map((b) => [b.account_id, b.balance]))
 
   return (
@@ -61,22 +62,18 @@ export function AccountsPage() {
           </span>
         </p>
       )}
-      {message && (
-        <p role="status" className="mb-2 border-l-4 border-pen bg-slip px-3 py-2 text-sm">
-          {message}
-        </p>
-      )}
+      {status}
       <ul aria-label="Suas contas" className="mb-8">
         {(accounts.data ?? []).map((account) => (
           <AccountRow
             key={account.id}
             account={account}
             balance={balanceOf.get(account.id) ?? null}
-            onMessage={setMessage}
+            onMessage={announce}
           />
         ))}
       </ul>
-      <NewAccountForm onCreated={(name) => setMessage(`Conta ${name} criada.`)} />
+      <NewAccountForm onCreated={(name) => announce(`Conta ${name} criada.`)} />
     </Page>
   )
 }
@@ -88,17 +85,20 @@ function AccountRow({
 }: {
   account: AccountOut
   balance: string | null
-  onMessage: (message: string) => void
+  onMessage: Announce
 }) {
   const [mode, setMode] = useState<'view' | 'edit' | 'archive'>('view')
   const [error, setError] = useState<string | null>(null)
   const refresh = useRefreshAccounts()
+  const editRef = useRef<HTMLButtonElement>(null)
+  useFocusOnReturn(mode, editRef)
 
   async function archive() {
     try {
       const result = await api.archiveAccount(account.id)
       const warning = (result.warnings ?? [])[0]?.detail
-      onMessage(warning ?? `Conta ${account.name} arquivada.`)
+      // A conta some da lista: o foco vai para a mensagem.
+      onMessage(warning ?? `Conta ${account.name} arquivada.`, { focus: true })
       await refresh()
     } catch (err) {
       setError(messageOf(err))
@@ -139,6 +139,7 @@ function AccountRow({
       ) : (
         <div className="flex w-full gap-1">
           <button
+            ref={editRef}
             type="button"
             aria-label={`Editar ${account.name}`}
             onClick={() => setMode('edit')}

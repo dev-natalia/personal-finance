@@ -1,4 +1,4 @@
-import { type FormEvent, type KeyboardEvent, useState } from 'react'
+import { type FormEvent, type KeyboardEvent, type Ref, useState } from 'react'
 import { Link } from 'react-router'
 
 import { linkClass } from '../../ui/styles'
@@ -8,10 +8,12 @@ interface Props {
   /** Devolve `true` se o texto virou um comprovante (aí o campo é limpo). */
   onSubmit: (text: string) => boolean
   disabled: boolean
+  /** Para a tela devolver o foco ao campo quando o comprovante fecha. */
+  inputRef?: Ref<HTMLTextAreaElement>
 }
 
 /** Campo da tela inicial. O texto não enviado sobrevive a recarregar e à sessão expirar. */
-export function Composer({ onSubmit, disabled }: Props) {
+export function Composer({ onSubmit, disabled, inputRef }: Props) {
   const [text, setText] = useState(loadDraft)
 
   function change(value: string) {
@@ -36,6 +38,7 @@ export function Composer({ onSubmit, disabled }: Props) {
     <form onSubmit={submit}>
       <div className="flex items-end gap-2 rounded-2xl border-[1.5px] border-ink-soft/40 bg-slip px-3 py-2 focus-within:border-pen">
         <textarea
+          ref={inputRef}
           aria-label="Novo lançamento"
           rows={1}
           value={text}

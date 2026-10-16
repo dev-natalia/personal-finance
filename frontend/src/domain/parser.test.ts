@@ -112,6 +112,20 @@ describe('parseEntry', () => {
     expect(items.every((i) => i.occurredOn === TODAY)).toBe(true)
   })
 
+  test('a date header before the colon applies to the whole batch', () => {
+    const items = parseEntry('dia 3: 35 ifood; 18 uber; ontem 10 pão', CTX)
+    expect(items.map((i) => [i.description, i.occurredOn])).toEqual([
+      ['ifood', '2026-10-03'],
+      ['uber', '2026-10-03'],
+      ['pão', '2026-10-14'],
+    ])
+  })
+
+  test('text before a colon that is not a date is not a header', () => {
+    const items = parseEntry('obs: 10 pão; 8 café', CTX)
+    expect(items.map((i) => i.occurredOn)).toEqual([TODAY, TODAY])
+  })
+
   test('empty input has no items', () => {
     expect(parseEntry('  ;\n ', CTX)).toEqual([])
   })

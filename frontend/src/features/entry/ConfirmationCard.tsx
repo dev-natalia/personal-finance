@@ -99,7 +99,17 @@ export function ConfirmationCard({ parsed, hints, onSaved, onClose }: Props) {
   const hasErrors = items.some((item) => item.status === 'error')
 
   return (
-    <section aria-labelledby="confirmation-title" className={`${slipClass} mx-1 my-3`}>
+    <section
+      aria-labelledby="confirmation-title"
+      // Esc fecha o comprovante (como Cancelar), exceto durante o envio.
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && !busy) {
+          event.preventDefault()
+          onClose()
+        }
+      }}
+      className={`${slipClass} mx-1 my-3`}
+    >
       <h2
         id="confirmation-title"
         ref={headingRef}

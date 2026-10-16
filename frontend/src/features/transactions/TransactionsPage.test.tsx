@@ -232,3 +232,27 @@ test('transactions page has no accessibility violations', async () => {
   await screen.findByText('mercado')
   await expectNoA11yViolations(container)
 })
+
+test('closing an inline form returns focus to the row', async () => {
+  mockTransactions()
+  const { user } = renderPage()
+  await user.click(await screen.findByRole('button', { name: 'Editar mercado' }))
+  const form = screen.getByRole('form', { name: 'Editar lançamento' })
+  await user.click(within(form).getByRole('button', { name: 'Cancelar' }))
+  expect(screen.getByRole('button', { name: 'Editar mercado' })).toHaveFocus()
+})
+
+test('voiding moves focus to the result message', async () => {
+  mockTransactions()
+  server.use(
+    http.post('/api/v1/transactions/:id/void', () =>
+      HttpResponse.json({ ...MERCADO, status: 'VOIDED', voided_at: `${TODAY}T16:00:00Z` }),
+    ),
+  )
+  const { user } = renderPage()
+  await user.click(await screen.findByRole('button', { name: 'Anular mercado' }))
+  await user.click(screen.getByRole('button', { name: 'Anular lançamento' }))
+  const status = await screen.findByRole('status')
+  expect(status).toHaveTextContent('Lançamento anulado.')
+  await waitFor(() => expect(status).toHaveFocus())
+})

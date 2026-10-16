@@ -1,4 +1,4 @@
-import { type ReactNode, useId, useState } from 'react'
+import { type ReactNode, useId, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 
 import { ApiError } from '../../api/client'
@@ -15,6 +15,7 @@ import { dayLabel } from '../../domain/dates'
 import { TRANSACTION_TYPE_LABELS } from '../../domain/labels'
 import { formatBRL } from '../../domain/money'
 import { Field } from '../../ui/Field'
+import { type Announce, useFocusOnReturn, useStatus } from '../../ui/focus'
 import { Page } from '../../ui/Page'
 import {
   errorTextClass,
@@ -43,7 +44,7 @@ export function TransactionsPage() {
   const hints = useEntryHints()
   const accounts = useAccounts(true)
   const categories = useCategories()
-  const [message, setMessage] = useState<string | null>(null)
+  const { announce, status } = useStatus()
 
   const filter = (name: Filter) => search.get(name) ?? ''
   const params: Omit<TransactionQuery, 'cursor'> = {
@@ -108,11 +109,7 @@ export function TransactionsPage() {
         }}
       </Filters>
 
-      {message && (
-        <p role="status" className="mb-2 border-l-4 border-pen bg-slip px-3 py-2 text-sm">
-          {message}
-        </p>
-      )}
+      {status}
       {list.isError && (
         <p role="alert" className={errorTextClass}>
           {list.error instanceof ApiError ? list.error.detail : 'Erro inesperado. Tente de novo.'}
@@ -130,7 +127,7 @@ export function TransactionsPage() {
             </h2>
             <ul>
               {txs.map((tx) => (
-                <TransactionRow key={tx.id} tx={tx} names={names} onMessage={setMessage} />
+                <TransactionRow key={tx.id} tx={tx} names={names} onMessage={announce} />
               ))}
             </ul>
           </section>
@@ -226,16 +223,19 @@ function TransactionRow({
 }: {
   tx: TransactionOut
   names: Names
-  onMessage: (message: string) => void
+  onMessage: Announce
 }) {
   const [mode, setMode] = useState<'view' | 'edit' | 'void' | 'refund'>('view')
   const [error, setError] = useState<string | null>(null)
   const invalidate = useInvalidateLedger()
   const voided = tx.status === 'VOIDED'
+  const editRef = useRef<HTMLButtonElement>(null)
+  useFocusOnReturn(mode, editRef)
 
-  function finish(text: string, result?: TransactionWriteOut) {
+  /** `focus`: a linha vai sumir da lista (anulada), então o foco vai para a mensagem. */
+  function finish(text: string, result?: TransactionWriteOut, focus = false) {
     const warnings = (result?.warnings ?? []).map((w) => w.detail)
-    onMessage([text, ...warnings].join(' '))
+    onMessage([text, ...warnings].join(' '), { focus })
     setMode('view')
   }
 
@@ -244,7 +244,7 @@ function TransactionRow({
     try {
       await api.voidTransaction(tx.id)
       await invalidate()
-      finish('Lançamento anulado.')
+      finish('Lançamento anulado.', undefined, true)
     } catch (err) {
       setError(err instanceof ApiError ? err.detail : 'Erro inesperado. Tente de novo.')
     }
@@ -278,6 +278,7 @@ function TransactionRow({
       {!voided && mode === 'view' && (
         <div className="-ml-2 flex w-full gap-1">
           <button
+            ref={editRef}
             type="button"
             aria-label={`Editar ${tx.description}`}
             onClick={() => setMode('edit')}

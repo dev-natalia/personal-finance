@@ -77,6 +77,35 @@ test('typing a phrase opens the confirmation card', async () => {
   expect(screen.getByLabelText('Novo lançamento')).toHaveValue('')
 })
 
+test('Escape closes the card and focus returns to the text field', async () => {
+  mockHome()
+  renderWithProviders(<AppRoutes />, { route: '/' })
+  const user = userEvent.setup()
+  await user.type(await screen.findByLabelText('Novo lançamento'), '42 mercado pix itaú{Enter}')
+  const heading = await screen.findByRole('heading', { name: 'Confirmar lançamento' })
+  expect(heading).toHaveFocus()
+  await user.keyboard('{Escape}')
+  expect(screen.queryByRole('heading', { name: 'Confirmar lançamento' })).not.toBeInTheDocument()
+  expect(screen.getByLabelText('Novo lançamento')).toHaveFocus()
+})
+
+test('confirming returns focus to the text field', async () => {
+  mockHome()
+  server.use(
+    http.post('/api/v1/transactions', () =>
+      HttpResponse.json({ transaction: transaction(), replayed: false, warnings: [] }, { status: 201 }),
+    ),
+  )
+  renderWithProviders(<AppRoutes />, { route: '/' })
+  const user = userEvent.setup()
+  await user.type(await screen.findByLabelText('Novo lançamento'), '42 mercado pix itaú{Enter}')
+  await user.click(await screen.findByRole('button', { name: 'Confirmar' }))
+  await waitFor(() =>
+    expect(screen.queryByRole('heading', { name: 'Confirmar lançamento' })).not.toBeInTheDocument(),
+  )
+  expect(screen.getByLabelText('Novo lançamento')).toHaveFocus()
+})
+
 test('empty text does nothing', async () => {
   mockHome()
   renderWithProviders(<AppRoutes />, { route: '/' })

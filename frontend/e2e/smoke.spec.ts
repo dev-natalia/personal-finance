@@ -12,6 +12,9 @@ test('login, record a phrase and see the balance', async ({ page }) => {
   await page.getByLabel('Senha').fill(password!)
   await page.getByRole('button', { name: 'Entrar' }).click()
   await expect(page.getByRole('heading', { name: 'Início' })).toBeAttached()
+  // PWA: o service worker da imagem de produção precisa registrar (CSP, tipo do arquivo, escopo).
+  const swActive = await page.evaluate(async () => !!(await navigator.serviceWorker.ready).active)
+  expect(swActive).toBe(true)
 
   await page.getByRole('link', { name: 'Contas' }).click()
   const form = page.getByRole('form', { name: 'Nova conta' })
