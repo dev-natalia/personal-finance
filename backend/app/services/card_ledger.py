@@ -12,9 +12,10 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.domain.cards import add_months, invoice_dates, invoice_month_for, split_installments
+from app.domain.dates import month_name
 from app.domain.money import quantize
 from app.models import (
     Card,
@@ -310,4 +311,62 @@ def preview_purchase(
         following=impacts[1:],
         limit_before=available,
         limit_after=quantize(available - amount),
+    )
+
+
+# --- linhas da fatura -------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class InvoiceLine:
+    item: InvoiceItem
+    description: str
+    occurred_on: date | None
+
+
+def _line_description(item: InvoiceItem, tx_description: str | None, source: date | None) -> str:
+    match item.kind:
+        case InvoiceItemKind.OPENING_BALANCE:
+            return "Saldo inicial"
+        case InvoiceItemKind.CARRYOVER if source is not None:
+            return f"Saldo da fatura de {month_name(source)}"
+        case InvoiceItemKind.INVOICE_INSTALLMENT if source is not None:
+            return (
+                f"Parcelamento da fatura de {month_name(source)} "
+                f"({item.installment_number}/{item.installment_count})"
+            )
+        case _:
+            return tx_description or ""
+
+
+def invoice_lines(session: Session, invoice: Invoice) -> list[InvoiceLine]:
+    """Itens ativos da fatura, com o texto que a tela mostra, em ordem de data."""
+    source = aliased(Invoice)
+    rows = session.execute(
+        select(
+            InvoiceItem, Transaction.description, Transaction.occurred_on, source.reference_month
+        )
+        .outerjoin(Transaction, Transaction.id == InvoiceItem.transaction_id)
+        .outerjoin(source, source.id == InvoiceItem.source_invoice_id)
+        .where(InvoiceItem.invoice_id == invoice.id, InvoiceItem.status == ItemStatus.ACTIVE)
+        .order_by(Transaction.occurred_on.asc().nulls_first(), InvoiceItem.id)
+    ).all()
+    return [
+        InvoiceLine(item, _line_description(item, description, source_month), occurred_on)
+        for item, description, occurred_on, source_month in rows
+    ]
+
+
+def invoice_payments(session: Session, invoice: Invoice) -> list[Transaction]:
+    """Pagamentos confirmados da fatura."""
+    return list(
+        session.scalars(
+            select(Transaction)
+            .where(
+                Transaction.invoice_id == invoice.id,
+                Transaction.type == TransactionType.INVOICE_PAYMENT,
+                Transaction.status == TransactionStatus.CONFIRMED,
+            )
+            .order_by(Transaction.occurred_on, Transaction.id)
+        )
     )

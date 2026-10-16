@@ -186,6 +186,7 @@ class TransactionFilters:
     date_from: date | None = None
     date_to: date | None = None
     account_id: UUID | None = None
+    card_id: UUID | None = None
     category_id: UUID | None = None
     merchant_id: UUID | None = None
     payment_method: PaymentMethod | None = None
@@ -227,6 +228,8 @@ def list_transactions(
         stmt = stmt.where(Transaction.occurred_on >= filters.date_from)
     if filters.date_to is not None:
         stmt = stmt.where(Transaction.occurred_on <= filters.date_to)
+    if filters.card_id is not None:
+        stmt = stmt.where(Transaction.card_id == filters.card_id)
     if filters.account_id is not None:
         stmt = stmt.where(
             or_(
@@ -291,11 +294,6 @@ class PaymentOption:
     card_id: UUID | None
     name: str
     payment_method: PaymentMethod
-
-    @property
-    def account_name(self) -> str:
-        """Nome antigo do campo, mantido até a API trocar para `name` (plano 2, Tarefa 8)."""
-        return self.name
 
 
 def top_payment_options(

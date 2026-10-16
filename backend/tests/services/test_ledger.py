@@ -254,7 +254,7 @@ def test_top_payment_options(db: Session, ctx: RequestContext) -> None:
     spend(nubank, PIX, 5, day=date(2026, 6, 1))  # fora da janela de 90 dias
 
     options = ledger.top_payment_options(db, ctx.user_id, AS_OF)
-    assert [(o.account_name, o.payment_method) for o in options] == [
+    assert [(o.name, o.payment_method) for o in options] == [
         ("Itaú", PIX),
         ("Itaú", DEBIT),
         ("Nubank", DEBIT),

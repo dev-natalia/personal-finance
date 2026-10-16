@@ -90,14 +90,18 @@ async def _validation_error(request: Request, exc: Exception) -> Response:
             request_id_of(request),
         )
     # O valor recebido (`input`) nunca volta na resposta: pode conter dados financeiros.
-    errors = [{"field": _field_path(err["loc"]), "message": err["msg"]} for err in exc.errors()]
-    return problem(
-        422,
-        "validation_error",
-        "Alguns campos são inválidos.",
-        request_id_of(request),
-        errors=errors,
-    )
+    errors = [
+        # Mensagens próprias (ValueError dos validadores) chegam com um prefixo em inglês.
+        {"field": _field_path(err["loc"]), "message": err["msg"].removeprefix("Value error, ")}
+        for err in exc.errors()
+    ]
+    detail = "Alguns campos são inválidos."
+    # Regra que envolve vários campos (ex.: conta ou cartão) não aponta um campo só: a
+    # mensagem dela vira o detalhe, que a tela sempre mostra.
+    if len(errors) == 1 and errors[0]["field"] == "body":
+        message = errors[0]["message"]
+        detail = message[:1].upper() + message[1:].rstrip(".") + "."
+    return problem(422, "validation_error", detail, request_id_of(request), errors=errors)
 
 
 def _field_path(loc: tuple[int | str, ...]) -> str:

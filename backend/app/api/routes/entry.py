@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.deps import CtxDep, DbDep
 from app.api.schemas.entry import (
     EntryAccountOut,
+    EntryCardOut,
     EntryCheckResult,
     EntryChecksIn,
     EntryChecksOut,
@@ -11,7 +12,7 @@ from app.api.schemas.entry import (
 )
 from app.api.schemas.transactions import TransactionOut
 from app.models import PaymentMethod
-from app.services import accounts, ledger
+from app.services import accounts, cards, ledger
 
 router = APIRouter(tags=["entry"])
 
@@ -23,6 +24,7 @@ def entry_hints(ctx: CtxDep, db: DbDep) -> EntryHintsOut:
     return EntryHintsOut(
         today=today,
         accounts=[EntryAccountOut.model_validate(a) for a in accounts.list_accounts(db, ctx)],
+        cards=[EntryCardOut.model_validate(c) for c in cards.list_cards(db, ctx)],
         payment_methods=list(PaymentMethod),
         top_payment_options=[
             PaymentOptionOut.model_validate(o)
