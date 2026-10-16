@@ -41,6 +41,27 @@ def today(clock: Clock, timezone: str) -> date:
     return clock.now().astimezone(ZoneInfo(timezone)).date()
 
 
+MONTH_NAMES = (
+    "janeiro",
+    "fevereiro",
+    "março",
+    "abril",
+    "maio",
+    "junho",
+    "julho",
+    "agosto",
+    "setembro",
+    "outubro",
+    "novembro",
+    "dezembro",
+)
+
+
+def month_name(day: date) -> str:
+    """Nome do mês em português, minúsculo ("outubro"), para textos como "fatura de outubro"."""
+    return MONTH_NAMES[day.month - 1]
+
+
 def month_range(year: int, month: int) -> tuple[date, date]:
     """Primeiro e último dia do mês (inclusivos)."""
     last_day = calendar.monthrange(year, month)[1]

@@ -12,7 +12,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.orm import Session
 
 from app.domain.cards import add_months, invoice_dates, invoice_month_for, split_installments
 from app.domain.money import quantize
@@ -32,47 +32,111 @@ ZERO = Decimal("0.00")
 MOVED_KINDS = (InvoiceItemKind.CARRYOVER, InvoiceItemKind.INVOICE_INSTALLMENT)
 
 
-def _sum(session: Session, stmt: Any) -> Decimal:
-    return quantize(Decimal(session.scalar(stmt) or 0))
+@dataclass(frozen=True)
+class _Sums:
+    """Somas por fatura, todas com itens ativos e lançamentos confirmados."""
+
+    debits: defaultdict[UUID, Decimal]
+    credits: defaultdict[UUID, Decimal]
+    payments: defaultdict[UUID, Decimal]
+    moved_out: defaultdict[UUID, Decimal]
+
+
+def _per_invoice(session: Session, stmt: Any) -> defaultdict[UUID, Decimal]:
+    sums: defaultdict[UUID, Decimal] = defaultdict(lambda: ZERO)
+    for invoice_id, amount in session.execute(stmt):
+        sums[invoice_id] = quantize(Decimal(amount))
+    return sums
+
+
+def _sums(session: Session, ids: list[UUID]) -> _Sums:
+    """Débitos, créditos, pagamentos e valor levado adiante de cada fatura.
+
+    Valor levado adiante = o que saiu da fatura para outras: saldo para a próxima (rotativo) ou
+    parcelamento com o banco. No parcelamento as parcelas incluem juros, que não saíram da
+    fatura de origem; por isso os juros do mesmo pagamento (o encargo do grupo) são
+    descontados. Sem isso, a fatura de origem ficaria com saldo negativo falso.
+    """
+    active = InvoiceItem.status == ItemStatus.ACTIVE
+    by_direction = (
+        select(InvoiceItem.invoice_id, func.sum(InvoiceItem.amount))
+        .where(InvoiceItem.invoice_id.in_(ids), active)
+        .group_by(InvoiceItem.invoice_id)
+    )
+    moved_items = _per_invoice(
+        session,
+        select(InvoiceItem.source_invoice_id, func.sum(InvoiceItem.amount))
+        .where(InvoiceItem.source_invoice_id.in_(ids), active, InvoiceItem.kind.in_(MOVED_KINDS))
+        .group_by(InvoiceItem.source_invoice_id),
+    )
+    plans = (
+        select(InvoiceItem.payment_group_id, InvoiceItem.source_invoice_id)
+        .where(
+            InvoiceItem.source_invoice_id.in_(ids),
+            active,
+            InvoiceItem.kind == InvoiceItemKind.INVOICE_INSTALLMENT,
+        )
+        .distinct()
+        .subquery()
+    )
+    interest = _per_invoice(
+        session,
+        select(plans.c.source_invoice_id, func.sum(Transaction.amount))
+        .join(Transaction, Transaction.payment_group_id == plans.c.payment_group_id)
+        .where(
+            Transaction.type == TransactionType.CHARGE,
+            Transaction.status == TransactionStatus.CONFIRMED,
+        )
+        .group_by(plans.c.source_invoice_id),
+    )
+    moved_out: defaultdict[UUID, Decimal] = defaultdict(lambda: ZERO)
+    for invoice_id, amount in moved_items.items():
+        moved_out[invoice_id] = quantize(amount - interest[invoice_id])
+    return _Sums(
+        debits=_per_invoice(
+            session, by_direction.where(InvoiceItem.direction == ItemDirection.DEBIT)
+        ),
+        credits=_per_invoice(
+            session, by_direction.where(InvoiceItem.direction == ItemDirection.CREDIT)
+        ),
+        payments=_per_invoice(
+            session,
+            select(Transaction.invoice_id, func.sum(Transaction.amount))
+            .where(
+                Transaction.invoice_id.in_(ids),
+                Transaction.type == TransactionType.INVOICE_PAYMENT,
+                Transaction.status == TransactionStatus.CONFIRMED,
+            )
+            .group_by(Transaction.invoice_id),
+        ),
+        moved_out=moved_out,
+    )
+
+
+def _card_invoices(session: Session, card: Card) -> list[Invoice]:
+    return list(
+        session.scalars(
+            select(Invoice).where(Invoice.card_id == card.id).order_by(Invoice.reference_month)
+        )
+    )
 
 
 def outstanding(session: Session, card: Card) -> Decimal:
     """Quanto se deve no cartão, somando todas as faturas (inclusive parcelas futuras).
 
-    devido = débitos ativos − créditos ativos − pagamentos confirmados − valor levado adiante
+    devido = débitos − créditos − pagamentos − valor levado adiante
 
-    O valor levado adiante (saldo para a próxima fatura ou parcelamento da fatura) aparece de
-    novo como débito na fatura de destino; descontá-lo na origem evita contar duas vezes.
+    O valor levado adiante reaparece como débito na fatura de destino (no parcelamento, com os
+    juros); descontá-lo na origem evita contar duas vezes.
     """
-    active_items = (
-        select(func.sum(InvoiceItem.amount))
-        .join(Invoice, Invoice.id == InvoiceItem.invoice_id)
-        .where(Invoice.card_id == card.id, InvoiceItem.status == ItemStatus.ACTIVE)
+    ids = [i.id for i in _card_invoices(session, card)]
+    sums = _sums(session, ids)
+    return quantize(
+        sum(
+            (sums.debits[i] - sums.credits[i] - sums.payments[i] - sums.moved_out[i] for i in ids),
+            ZERO,
+        )
     )
-    debits = _sum(session, active_items.where(InvoiceItem.direction == ItemDirection.DEBIT))
-    credits = _sum(session, active_items.where(InvoiceItem.direction == ItemDirection.CREDIT))
-    payments = _sum(
-        session,
-        select(func.sum(Transaction.amount))
-        .join(Invoice, Invoice.id == Transaction.invoice_id)
-        .where(
-            Invoice.card_id == card.id,
-            Transaction.type == TransactionType.INVOICE_PAYMENT,
-            Transaction.status == TransactionStatus.CONFIRMED,
-        ),
-    )
-    source = aliased(Invoice)
-    moved_out = _sum(
-        session,
-        select(func.sum(InvoiceItem.amount))
-        .join(source, source.id == InvoiceItem.source_invoice_id)
-        .where(
-            source.card_id == card.id,
-            InvoiceItem.status == ItemStatus.ACTIVE,
-            InvoiceItem.kind.in_(MOVED_KINDS),
-        ),
-    )
-    return quantize(debits - credits - payments - moved_out)
 
 
 # --- faturas ----------------------------------------------------------------------------------
@@ -109,13 +173,6 @@ def open_invoice_month(card: Card, today: date) -> date:
     return invoice_month_for(today, card.closing_day, card.due_day)
 
 
-def _per_invoice(session: Session, stmt: Any) -> defaultdict[UUID, Decimal]:
-    sums: defaultdict[UUID, Decimal] = defaultdict(lambda: ZERO)
-    for invoice_id, amount in session.execute(stmt):
-        sums[invoice_id] = quantize(Decimal(amount))
-    return sums
-
-
 def _state(invoice: Invoice, balance: Decimal, open_month: date, today: date) -> InvoiceState:
     if invoice.closing_date > today:
         return InvoiceState.OPEN if invoice.reference_month <= open_month else InvoiceState.FUTURE
@@ -128,38 +185,9 @@ def invoice_totals(session: Session, card: Card, today: date) -> list[InvoiceTot
     Uma fatura que fecha com mais crédito que débito fica paga, e o saldo credor abate a fatura
     seguinte (como o banco faz).
     """
-    card_invoices = list(
-        session.scalars(
-            select(Invoice).where(Invoice.card_id == card.id).order_by(Invoice.reference_month)
-        )
-    )
-    ids = [i.id for i in card_invoices]
-    active = InvoiceItem.status == ItemStatus.ACTIVE
-    by_direction = (
-        select(InvoiceItem.invoice_id, func.sum(InvoiceItem.amount))
-        .where(InvoiceItem.invoice_id.in_(ids), active)
-        .group_by(InvoiceItem.invoice_id)
-    )
-    debits = _per_invoice(session, by_direction.where(InvoiceItem.direction == ItemDirection.DEBIT))
-    credits = _per_invoice(
-        session, by_direction.where(InvoiceItem.direction == ItemDirection.CREDIT)
-    )
-    payments = _per_invoice(
-        session,
-        select(Transaction.invoice_id, func.sum(Transaction.amount))
-        .where(
-            Transaction.invoice_id.in_(ids),
-            Transaction.type == TransactionType.INVOICE_PAYMENT,
-            Transaction.status == TransactionStatus.CONFIRMED,
-        )
-        .group_by(Transaction.invoice_id),
-    )
-    moved_out = _per_invoice(
-        session,
-        select(InvoiceItem.source_invoice_id, func.sum(InvoiceItem.amount))
-        .where(InvoiceItem.source_invoice_id.in_(ids), active, InvoiceItem.kind.in_(MOVED_KINDS))
-        .group_by(InvoiceItem.source_invoice_id),
-    )
+    card_invoices = _card_invoices(session, card)
+    sums = _sums(session, [i.id for i in card_invoices])
+    debits, credits, payments, moved_out = sums.debits, sums.credits, sums.payments, sums.moved_out
 
     open_month = open_invoice_month(card, today)
     result: list[InvoiceTotals] = []

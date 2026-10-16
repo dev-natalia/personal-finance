@@ -1,6 +1,7 @@
 """Faturas e seus itens: criação, lançamento de itens, pagamento e conferência."""
 
 import uuid
+from collections.abc import Mapping
 from datetime import date
 from decimal import Decimal
 from typing import Any
@@ -28,6 +29,7 @@ from app.models import (
     ItemStatus,
     Transaction,
 )
+from app.repositories import get_owned
 from app.services.audit import record, snapshot
 from app.services.context import RequestContext
 
@@ -195,6 +197,14 @@ def cancel_transaction_items(session: Session, ctx: RequestContext, tx: Transact
         _set_status(session, ctx, item, ItemStatus.CANCELLED)
 
 
+def cancel_group_items(session: Session, ctx: RequestContext, group_id: uuid.UUID) -> None:
+    """Cancela os itens criados por uma operação de pagamento (restante levado ou parcelado)."""
+    rows = _active_items(session, InvoiceItem.payment_group_id == group_id)
+    _ensure_not_closed(rows, ctx.today())
+    for item, _ in rows:
+        _set_status(session, ctx, item, ItemStatus.CANCELLED)
+
+
 def apply_card_refund(
     session: Session, ctx: RequestContext, refund: Transaction, original: Transaction, card: Card
 ) -> None:
@@ -249,3 +259,30 @@ def undo_card_refund(session: Session, ctx: RequestContext, refund: Transaction)
         _set_status(session, ctx, item, ItemStatus.CANCELLED)
     for item, _ in restored:
         _set_status(session, ctx, item, ItemStatus.ACTIVE)
+
+
+# --- conferência com o banco e datas -------------------------------------------------------
+
+
+def update_invoice(
+    session: Session, ctx: RequestContext, invoice_id: uuid.UUID, changes: Mapping[str, Any]
+) -> Invoice:
+    """Total informado pelo banco (A9; pode voltar a vazio) e datas editadas à mão (A7).
+
+    Datas editadas não são recalculadas se o ciclo do cartão mudar.
+    """
+    invoice = get_owned(session, Invoice, invoice_id, ctx.user_id, "a fatura", for_update=True)
+    before = snapshot(invoice)
+    if "reported_total" in changes:
+        reported = changes["reported_total"]
+        invoice.reported_total = None if reported is None else quantize(reported)
+    closing = changes.get("closing_date") or invoice.closing_date
+    due = changes.get("due_date") or invoice.due_date
+    if (closing, due) != (invoice.closing_date, invoice.due_date):
+        if due <= closing:
+            raise RuleViolation(
+                "due_before_closing", "O vencimento precisa ser depois do fechamento."
+            )
+        invoice.closing_date, invoice.due_date, invoice.dates_edited = closing, due, True
+    record(session, ctx, invoice, AuditAction.UPDATE, before)
+    return invoice

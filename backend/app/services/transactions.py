@@ -34,7 +34,11 @@ from app.repositories import get_owned
 from app.services import card_ledger, cards, invoices, ledger
 from app.services.accounts import get_active_account
 from app.services.audit import jsonable, record, snapshot
-from app.services.categories import get_active_category, get_unclassified
+from app.services.categories import (
+    get_active_category,
+    get_financial_charges,
+    get_unclassified,
+)
 from app.services.context import RequestContext
 from app.services.merchants import resolve_merchant
 
@@ -91,7 +95,18 @@ class NewCardExpense:
     notes: str | None = None
 
 
-type NewTransaction = NewIncome | NewExpense | NewTransfer | NewCardExpense
+@dataclass(frozen=True)
+class NewCharge:
+    """Encargo do cartão (juros, multa, IOF) com o valor que o banco cobrou (A8)."""
+
+    amount: Decimal
+    occurred_on: date
+    description: str
+    card_id: UUID
+    notes: str | None = None
+
+
+type NewTransaction = NewIncome | NewExpense | NewTransfer | NewCardExpense | NewCharge
 
 
 @dataclass(frozen=True)
@@ -158,6 +173,18 @@ def _insert(
         return _replay(existing, digest)
     record(session, ctx, tx, AuditAction.CREATE, before=None)
     return None
+
+
+def ensure_same_payload(existing: Transaction, digest: bytes) -> None:
+    """Recusa reaproveitar uma chave com outro conteúdo (operações com vários lançamentos)."""
+    _replay(existing, digest)
+
+
+# Peças da idempotência e das regras de conta usadas por operações com vários lançamentos
+# (pagamento de fatura, em invoice_payments).
+lock_idempotency_key = _lock_idempotency_key
+find_by_key = _find_by_key
+insert_transaction = _insert
 
 
 # --- regras compartilhadas ------------------------------------------------------------------
@@ -236,6 +263,10 @@ def _card_limit_notices(session: Session, ctx: RequestContext, card: Card) -> li
             f"O limite do cartão {card.name} ficou negativo em {format_brl(-available)}.",
         )
     ]
+
+
+check_account_opening = _check_opening
+negative_balance_notices = _negative_balance_notices
 
 
 # --- criação --------------------------------------------------------------------------------
@@ -326,6 +357,27 @@ def _build_card_expense(
     return tx, card
 
 
+def _build_charge(
+    session: Session, ctx: RequestContext, data: NewCharge
+) -> tuple[Transaction, Card]:
+    card = cards.get_active_card(session, ctx, data.card_id)
+    if data.occurred_on < card.opening_date:
+        raise RuleViolation(
+            "purchase_before_card_opening", "A data é anterior ao início do cartão."
+        )
+    tx = Transaction(
+        user_id=ctx.user_id,
+        type=TransactionType.CHARGE,
+        amount=quantize(data.amount),
+        occurred_on=data.occurred_on,
+        description=data.description,
+        notes=data.notes,
+        category_id=get_financial_charges(session, ctx.user_id).id,
+        card_id=card.id,
+    )
+    return tx, card
+
+
 def _build_transfer(session: Session, ctx: RequestContext, data: NewTransfer) -> Transaction:
     if data.account_id == data.destination_account_id:
         raise RuleViolation(
@@ -368,6 +420,8 @@ def create_transaction(
     match data:
         case NewCardExpense():
             tx, card = _build_card_expense(session, ctx, data)
+        case NewCharge():
+            tx, card = _build_charge(session, ctx, data)
         case NewTransfer():
             tx = _build_transfer(session, ctx, data)
         case NewExpense():
@@ -384,7 +438,10 @@ def create_transaction(
     if raced is not None:
         return raced
     if card is not None:
-        invoices.bill_purchase(session, ctx, tx, card)
+        if tx.type is TransactionType.CHARGE:
+            invoices.bill_charge(session, ctx, tx, card)
+        else:
+            invoices.bill_purchase(session, ctx, tx, card)
         return WriteResult(tx, notices=_card_limit_notices(session, ctx, card))
     spends = tx.type in (TransactionType.EXPENSE, TransactionType.TRANSFER)
     outflow = [tx.account_id] if spends and tx.account_id is not None else []
