@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.models import (
     Account,
     AccountType,
+    Card,
     Category,
     CategoryKind,
     Merchant,
@@ -42,6 +43,29 @@ def make_account(
         opening_balance=Decimal(opening_balance),
         opening_date=opening_date,
     )
+
+
+def make_card(
+    db: Session,
+    ctx: RequestContext,
+    name: str = "Nubank",
+    credit_limit: str = "11000.00",
+    closing_day: int = 3,
+    due_day: int = 10,
+    opening_date: date = date(2026, 10, 1),
+) -> Card:
+    """Cartão gravado direto pelo ORM (o serviço de cadastro chega na Tarefa 3)."""
+    card = Card(
+        user_id=ctx.user_id,
+        name=name,
+        credit_limit=Decimal(credit_limit),
+        closing_day=closing_day,
+        due_day=due_day,
+        opening_date=opening_date,
+    )
+    db.add(card)
+    db.flush()
+    return card
 
 
 def find_category(

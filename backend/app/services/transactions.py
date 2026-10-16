@@ -290,7 +290,8 @@ def create_transaction(
     if raced is not None:
         return raced
     spends = tx.type in (TransactionType.EXPENSE, TransactionType.TRANSFER)
-    outflow = [tx.account_id] if spends else []
+    # Compra no cartão não tira dinheiro de conta (não tem account_id).
+    outflow = [tx.account_id] if spends and tx.account_id is not None else []
     as_of = max(ctx.today(), tx.occurred_on)
     return WriteResult(tx, notices=_negative_balance_notices(session, ctx, outflow, as_of))
 
@@ -362,7 +363,13 @@ def create_refund(
         raise RuleViolation(
             "refund_before_expense", "O estorno não pode ter data anterior à despesa."
         )
-    account = get_active_account(session, ctx, data.account_id or original.account_id)
+    account_id = data.account_id or original.account_id
+    if account_id is None:
+        # Despesa no cartão: o estorno vira crédito na fatura (Tarefa 6 do plano 2).
+        raise RuleViolation(
+            "card_refund_not_supported", "Estorno de compra no cartão ainda não é suportado."
+        )
+    account = get_active_account(session, ctx, account_id)
     _check_opening(account, data.occurred_on)
 
     tx = Transaction(
@@ -408,9 +415,8 @@ _NULLABLE = frozenset({"notes", "merchant"})
 
 
 def _involved_accounts(tx: Transaction) -> list[UUID]:
-    if tx.destination_account_id is None:
-        return [tx.account_id]
-    return [tx.account_id, tx.destination_account_id]
+    """Contas que o lançamento movimenta (nenhuma nos lançamentos do cartão)."""
+    return [a for a in (tx.account_id, tx.destination_account_id) if a is not None]
 
 
 def _change_category(
