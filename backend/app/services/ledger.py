@@ -20,6 +20,7 @@ from app.domain.merchants import normalize
 from app.domain.money import quantize
 from app.models import (
     Account,
+    Card,
     Category,
     Merchant,
     PaymentMethod,
@@ -244,33 +245,51 @@ def possible_duplicates(
 
 @dataclass(frozen=True)
 class PaymentOption:
-    account_id: UUID
-    account_name: str
+    """Atalho de pagamento: conta + meio, ou cartão (meio crédito)."""
+
+    account_id: UUID | None
+    card_id: UUID | None
+    name: str
     payment_method: PaymentMethod
+
+    @property
+    def account_name(self) -> str:
+        """Nome antigo do campo, mantido até a API trocar para `name` (plano 2, Tarefa 8)."""
+        return self.name
 
 
 def top_payment_options(
     session: Session, user_id: UUID, today: date, limit: int = 3
 ) -> list[PaymentOption]:
-    """Combinações conta + meio mais usadas em despesas dos últimos 90 dias."""
+    """Contas + meio e cartões mais usados em despesas dos últimos 90 dias."""
+    recent = (
+        Transaction.user_id == user_id,
+        _CONFIRMED,
+        Transaction.type == TransactionType.EXPENSE,
+        Transaction.occurred_on >= today - PAYMENT_HISTORY,
+    )
     uses = func.count(Transaction.id)
-    rows = session.execute(
+    by_account = session.execute(
         select(Account.id, Account.name, Transaction.payment_method, uses)
         .select_from(Transaction)
         .join(Account, Account.id == Transaction.account_id)
-        .where(
-            Transaction.user_id == user_id,
-            _CONFIRMED,
-            Transaction.type == TransactionType.EXPENSE,
-            Transaction.occurred_on >= today - PAYMENT_HISTORY,
-            Account.archived_at.is_(None),
-        )
+        .where(*recent, Account.archived_at.is_(None))
         .group_by(Account.id, Account.name, Transaction.payment_method)
-        .order_by(uses.desc(), Account.name, Transaction.payment_method)
-        .limit(limit)
     ).all()
-    return [
-        PaymentOption(account_id, name, method)
-        for account_id, name, method, _ in rows
-        if method is not None  # despesas sempre têm meio de pagamento
+    by_card = session.execute(
+        select(Card.id, Card.name, uses)
+        .select_from(Transaction)
+        .join(Card, Card.id == Transaction.card_id)
+        .where(*recent, Card.archived_at.is_(None))
+        .group_by(Card.id, Card.name)
+    ).all()
+    ranked = [
+        (count, PaymentOption(account_id, None, name, method))
+        for account_id, name, method, count in by_account
+        if method is not None  # despesas via conta sempre têm meio de pagamento
+    ] + [
+        (count, PaymentOption(None, card_id, name, PaymentMethod.CREDIT))
+        for card_id, name, count in by_card
     ]
+    ranked.sort(key=lambda pair: (-pair[0], pair[1].name, pair[1].payment_method))
+    return [option for _, option in ranked[:limit]]

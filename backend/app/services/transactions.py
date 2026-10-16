@@ -13,12 +13,14 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.domain.cards import MAX_INSTALLMENTS, MIN_INSTALLMENTS
 from app.domain.categorization import resolve_category
 from app.domain.errors import Conflict, Notice, RuleViolation
 from app.domain.money import format_brl, quantize
 from app.models import (
     Account,
     AuditAction,
+    Card,
     Category,
     CategoryKind,
     Merchant,
@@ -29,7 +31,7 @@ from app.models import (
     TransactionType,
 )
 from app.repositories import get_owned
-from app.services import ledger
+from app.services import cards, invoices, ledger
 from app.services.accounts import get_active_account
 from app.services.audit import jsonable, record, snapshot
 from app.services.categories import get_active_category, get_unclassified
@@ -70,7 +72,26 @@ class NewTransfer:
     notes: str | None = None
 
 
-type NewTransaction = NewIncome | NewExpense | NewTransfer
+@dataclass(frozen=True)
+class NewCardExpense:
+    """Compra no cartão. `installments` nulo = à vista.
+
+    `remaining_installments`: parcelada que já corria antes do início do cartão; só as parcelas
+    que faltam depois da fatura aberta no início são lançadas (as anteriores estão no total).
+    """
+
+    amount: Decimal
+    occurred_on: date
+    description: str
+    card_id: UUID
+    installments: int | None = None
+    remaining_installments: int | None = None
+    category_id: UUID | None = None
+    merchant: str | None = None
+    notes: str | None = None
+
+
+type NewTransaction = NewIncome | NewExpense | NewTransfer | NewCardExpense
 
 
 @dataclass(frozen=True)
@@ -235,6 +256,64 @@ def _build_categorized(
     )
 
 
+def _check_installments(data: NewCardExpense) -> None:
+    count, remaining = data.installments, data.remaining_installments
+    valid = (count is None and remaining is None) or (
+        count is not None
+        and MIN_INSTALLMENTS <= count <= MAX_INSTALLMENTS
+        and (remaining is None or 1 <= remaining < count)
+    )
+    if not valid:
+        raise RuleViolation(
+            "installments_out_of_range",
+            f"Parcelas devem ser de {MIN_INSTALLMENTS} a {MAX_INSTALLMENTS}; as que faltam, "
+            "pelo menos 1 e menos que o total.",
+        )
+
+
+def _check_card_dates(card: Card, data: NewCardExpense) -> None:
+    if data.remaining_installments is not None:
+        if data.occurred_on >= card.opening_date:
+            raise RuleViolation(
+                "in_progress_after_card_opening",
+                "Compras a partir do início do cartão entram como compra normal, "
+                "não como parcelada em andamento.",
+            )
+    elif data.occurred_on < card.opening_date:
+        raise RuleViolation(
+            "purchase_before_card_opening",
+            "A compra é anterior ao início do cartão. Para parcelas que já estavam correndo, "
+            "informe quantas faltam.",
+        )
+
+
+def _build_card_expense(
+    session: Session, ctx: RequestContext, data: NewCardExpense
+) -> tuple[Transaction, Card]:
+    card = cards.get_active_card(session, ctx, data.card_id)
+    _check_installments(data)
+    _check_card_dates(card, data)
+    merchant = resolve_merchant(session, ctx.user_id, data.merchant or data.description)
+    category = _resolve_category(session, ctx, data.category_id, merchant, CategoryKind.EXPENSE)
+    if data.category_id is not None:
+        _learn(merchant, category)
+    tx = Transaction(
+        user_id=ctx.user_id,
+        type=TransactionType.EXPENSE,
+        amount=quantize(data.amount),
+        occurred_on=data.occurred_on,
+        description=data.description,
+        notes=data.notes,
+        merchant_id=merchant.id if merchant else None,
+        category_id=category.id,
+        card_id=card.id,
+        payment_method=PaymentMethod.CREDIT,
+        installments=data.installments,
+        remaining_installments=data.remaining_installments,
+    )
+    return tx, card
+
+
 def _build_transfer(session: Session, ctx: RequestContext, data: NewTransfer) -> Transaction:
     if data.account_id == data.destination_account_id:
         raise RuleViolation(
@@ -273,7 +352,10 @@ def create_transaction(
             return _replay(existing, digest)
 
     _require_positive(data.amount)
+    card: Card | None = None
     match data:
+        case NewCardExpense():
+            tx, card = _build_card_expense(session, ctx, data)
         case NewTransfer():
             tx = _build_transfer(session, ctx, data)
         case NewExpense():
@@ -289,6 +371,8 @@ def create_transaction(
     raced = _insert(session, ctx, tx, idempotency_key, digest)
     if raced is not None:
         return raced
+    if card is not None:
+        invoices.bill_purchase(session, ctx, tx, card)
     spends = tx.type in (TransactionType.EXPENSE, TransactionType.TRANSFER)
     # Compra no cartão não tira dinheiro de conta (não tem account_id).
     outflow = [tx.account_id] if spends and tx.account_id is not None else []

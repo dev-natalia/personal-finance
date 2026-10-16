@@ -9,9 +9,23 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app.domain.cards import invoice_dates
+from app.domain.cards import (
+    add_months,
+    consumption_month,
+    invoice_dates,
+    invoice_month_for,
+    split_installments,
+)
 from app.domain.money import quantize
-from app.models import AuditAction, Card, Invoice, InvoiceItem, InvoiceItemKind, ItemDirection
+from app.models import (
+    AuditAction,
+    Card,
+    Invoice,
+    InvoiceItem,
+    InvoiceItemKind,
+    ItemDirection,
+    Transaction,
+)
 from app.services.audit import record
 from app.services.context import RequestContext
 
@@ -67,3 +81,52 @@ def add_item(
     session.flush()
     record(session, ctx, item, AuditAction.CREATE, before=None)
     return item
+
+
+def bill_purchase(
+    session: Session, ctx: RequestContext, tx: Transaction, card: Card
+) -> list[InvoiceItem]:
+    """Lança a compra nas faturas: um item à vista, ou uma parcela por fatura (A6, A10, A3)."""
+    first_month = invoice_month_for(tx.occurred_on, card.closing_day, card.due_day)
+    if tx.installments is None:
+        invoice = get_or_create_invoice(session, card, first_month)
+        item = add_item(
+            session,
+            ctx,
+            invoice,
+            kind=InvoiceItemKind.PURCHASE,
+            direction=ItemDirection.DEBIT,
+            amount=tx.amount,
+            transaction_id=tx.id,
+        )
+        return [item]
+
+    count = tx.installments
+    parts = split_installments(tx.amount, count)
+    numbers = range(1, count + 1)
+    if tx.remaining_installments is not None:
+        # Parcelada em andamento: só as que faltam, a partir da fatura seguinte à aberta no
+        # início do cartão (a parcela daquele mês já está no total informado da fatura).
+        numbers = range(count - tx.remaining_installments + 1, count + 1)
+        opening_month = invoice_month_for(card.opening_date, card.closing_day, card.due_day)
+        # A parcela `numbers[0]` cai na fatura seguinte à do início; a parcela k fica em
+        # first_month + (k − 1), então first_month recua o que for preciso.
+        first_month = add_months(opening_month, 1 - (numbers[0] - 1))
+    items = []
+    for number in numbers:
+        invoice = get_or_create_invoice(session, card, add_months(first_month, number - 1))
+        items.append(
+            add_item(
+                session,
+                ctx,
+                invoice,
+                kind=InvoiceItemKind.PURCHASE,
+                direction=ItemDirection.DEBIT,
+                amount=parts[number - 1],
+                transaction_id=tx.id,
+                installment_number=number,
+                installment_count=count,
+                consumption_month=consumption_month(tx.occurred_on, number),
+            )
+        )
+    return items
