@@ -30,7 +30,7 @@ export function ledgerDetail(
   accountNames: Map<string, string>,
   categoryNames: Map<string, string>,
 ): string {
-  const account = accountNames.get(tx.account_id) ?? ''
+  const account = (tx.account_id && accountNames.get(tx.account_id)) || ''
   if (tx.type === 'TRANSFER') {
     const destination = tx.destination_account_id ? accountNames.get(tx.destination_account_id) : ''
     return `Transferência, de ${account} para ${destination ?? ''}`

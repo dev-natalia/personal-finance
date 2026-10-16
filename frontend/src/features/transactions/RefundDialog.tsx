@@ -29,7 +29,7 @@ export function RefundDialog({ expense, onDone, onCancel }: Props) {
   const keyFor = useIdempotencyKey()
   const [amount, setAmount] = useState(toInputAmount(expense.amount))
   const [date, setDate] = useState<string | null>(null)
-  const [account, setAccount] = useState(expense.account_id)
+  const [account, setAccount] = useState(expense.account_id ?? '')
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [detail, setDetail] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -100,7 +100,7 @@ export function RefundDialog({ expense, onDone, onCancel }: Props) {
                 {a.name}
               </option>
             ))}
-            {!accounts.some((a) => a.id === expense.account_id) && (
+            {expense.account_id !== null && !accounts.some((a) => a.id === expense.account_id) && (
               <option value={expense.account_id}>Conta arquivada</option>
             )}
           </select>

@@ -13,7 +13,11 @@ import type {
   TransferIn,
 } from '../../api/types'
 import { useIdempotencyKey } from '../../api/useIdempotencyKey'
-import { PAYMENT_METHOD_LABELS, TRANSACTION_TYPE_LABELS } from '../../domain/labels'
+import {
+  ACCOUNT_PAYMENT_METHODS,
+  PAYMENT_METHOD_LABELS,
+  TRANSACTION_TYPE_LABELS,
+} from '../../domain/labels'
 import { isPositive, toInputAmount, tryParseMoney } from '../../domain/money'
 import type { PaymentMethod } from '../../domain/parser'
 import { Field, invalid } from '../../ui/Field'
@@ -25,11 +29,14 @@ import {
   secondaryButtonClass,
 } from '../../ui/styles'
 
-type NewType = Exclude<TransactionType, 'REFUND'>
+type NewType = Extract<TransactionType, 'EXPENSE' | 'INCOME' | 'TRANSFER'>
 type Errors = Record<string, string>
 
 const NEW_TYPES: NewType[] = ['EXPENSE', 'INCOME', 'TRANSFER']
-const PAYMENT_METHODS = Object.entries(PAYMENT_METHOD_LABELS) as [PaymentMethod, string][]
+const PAYMENT_METHODS = ACCOUNT_PAYMENT_METHODS.map((m): [PaymentMethod, string] => [
+  m,
+  PAYMENT_METHOD_LABELS[m],
+])
 const AUTOMATIC = ''
 
 interface Fields {

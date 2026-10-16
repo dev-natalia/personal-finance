@@ -6,6 +6,13 @@ import type {
   AccountOut,
   AccountPatch,
   BalancesOut,
+  CardArchiveOut,
+  CardIn,
+  CardInvoicesOut,
+  CardOut,
+  CardPatch,
+  CardSummaryOut,
+  ChargeIn,
   CategoryIn,
   CategoryKind,
   CategoryOut,
@@ -15,8 +22,16 @@ import type {
   EntryHintsOut,
   ExpenseIn,
   IncomeIn,
+  InvoiceDetailOut,
+  InvoicePatch,
+  InvoicePaymentIn,
+  InvoicePaymentOut,
+  InvoiceSummaryOut,
   MerchantOut,
   MonthSummaryOut,
+  PaymentGroupVoidOut,
+  PreviewIn,
+  PurchasePreviewOut,
   RefundIn,
   TransactionOut,
   TransactionPage,
@@ -34,6 +49,7 @@ export interface TransactionQuery {
   date_from?: string
   date_to?: string
   account_id?: string
+  card_id?: string
   category_id?: string
   type?: TransactionType
   status?: TransactionStatus | 'ALL'
@@ -101,6 +117,36 @@ export const api = {
       body,
       headers: { 'Idempotency-Key': key },
     }),
+
+  cards: (includeArchived = false) =>
+    apiFetch<CardOut[]>(`${V1}/cards${query({ include_archived: includeArchived || undefined })}`),
+  cardsSummary: () => apiFetch<CardSummaryOut[]>(`${V1}/cards/summary`),
+  createCard: (body: CardIn) => apiFetch<CardOut>(`${V1}/cards`, { method: 'POST', body }),
+  updateCard: (id: string, patch: CardPatch) =>
+    apiFetch<CardOut>(`${V1}/cards/${id}`, { method: 'PATCH', body: patch }),
+  archiveCard: (id: string) =>
+    apiFetch<CardArchiveOut>(`${V1}/cards/${id}/archive`, { method: 'POST' }),
+  cardInvoices: (id: string, before?: string) =>
+    apiFetch<CardInvoicesOut>(`${V1}/cards/${id}/invoices${query({ before })}`),
+  invoice: (id: string) => apiFetch<InvoiceDetailOut>(`${V1}/invoices/${id}`),
+  updateInvoice: (id: string, patch: InvoicePatch) =>
+    apiFetch<InvoiceSummaryOut>(`${V1}/invoices/${id}`, { method: 'PATCH', body: patch }),
+  payInvoice: (id: string, body: InvoicePaymentIn, key: string) =>
+    apiFetch<InvoicePaymentOut>(`${V1}/invoices/${id}/payments`, {
+      method: 'POST',
+      body,
+      headers: { 'Idempotency-Key': key },
+    }),
+  voidPaymentGroup: (id: string) =>
+    apiFetch<PaymentGroupVoidOut>(`${V1}/payment-groups/${id}/void`, { method: 'POST' }),
+  addCharge: (cardId: string, body: ChargeIn, key: string) =>
+    apiFetch<TransactionWriteOut>(`${V1}/cards/${cardId}/charges`, {
+      method: 'POST',
+      body,
+      headers: { 'Idempotency-Key': key },
+    }),
+  previewPurchase: (cardId: string, body: PreviewIn) =>
+    apiFetch<PurchasePreviewOut>(`${V1}/cards/${cardId}/preview`, { method: 'POST', body }),
 
   monthSummary: (month: string) =>
     apiFetch<MonthSummaryOut>(`${V1}/summaries/month${query({ month })}`),

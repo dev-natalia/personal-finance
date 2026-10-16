@@ -227,3 +227,12 @@ test('card has no accessibility violations', async () => {
   await screen.findAllByRole('option', { name: 'Saúde' })
   await expectNoA11yViolations(container)
 })
+
+test('account method choices never offer credit', async () => {
+  mockApi()
+  renderCard([parsed({ paymentMethod: null, pending: ['paymentMethod'] })])
+  const method = await screen.findByLabelText('Meio')
+  const labels = Array.from(method.querySelectorAll('option')).map((o) => o.textContent)
+  expect(labels).not.toContain('Crédito')
+  expect(labels).toContain('Pix')
+})

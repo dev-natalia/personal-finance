@@ -2,7 +2,7 @@ import { type Dispatch, useId } from 'react'
 
 import { useMerchantSuggestion } from '../../api/queries'
 import type { CategoryOut, EntryHintsOut } from '../../api/types'
-import { PAYMENT_METHOD_LABELS } from '../../domain/labels'
+import { PAYMENT_METHOD_LABELS, isAccountMethod } from '../../domain/labels'
 import type { PaymentMethod, PendingField } from '../../domain/parser'
 import { chipClass, errorTextClass, inputClass } from '../../ui/styles'
 import { type CardAction, type CardItem, type EditableFields, missingFields } from './cardState'
@@ -175,7 +175,9 @@ function PaymentFields({
     <fieldset>
       <legend className="mb-2 text-sm">Como você pagou?</legend>
       <div className="mb-2 flex flex-wrap gap-2">
-        {hints.top_payment_options.map((option) => {
+        {/* Atalhos de cartão entram junto com o pagamento no cartão (plano 2, Tarefa 11). */}
+        {hints.top_payment_options.flatMap((option) => {
+          if (option.account_id === null) return []
           const pressed =
             item.accountId === option.account_id && item.paymentMethod === option.payment_method
           return (
@@ -188,7 +190,7 @@ function PaymentFields({
               }
               className={chipClass}
             >
-              {PAYMENT_METHOD_LABELS[option.payment_method]} {option.account_name}
+              {PAYMENT_METHOD_LABELS[option.payment_method]} {option.name}
             </button>
           )
         })}
@@ -206,7 +208,7 @@ function PaymentFields({
             className={slipInput}
           >
             <option value="">Escolha</option>
-            {hints.payment_methods.map((method) => (
+            {hints.payment_methods.filter(isAccountMethod).map((method) => (
               <option key={method} value={method}>
                 {PAYMENT_METHOD_LABELS[method]}
               </option>

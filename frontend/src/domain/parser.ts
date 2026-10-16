@@ -7,7 +7,7 @@ import { matchDate } from './dates'
 import { isPositive, tryParseMoney } from './money'
 import { normalize } from './text'
 
-export type PaymentMethod = 'PIX' | 'DEBIT' | 'CASH' | 'BOLETO' | 'OTHER'
+export type PaymentMethod = 'PIX' | 'DEBIT' | 'CASH' | 'BOLETO' | 'OTHER' | 'CREDIT'
 export type EntryType = 'EXPENSE' | 'INCOME'
 export type PendingField = 'amount' | 'description' | 'account' | 'paymentMethod'
 

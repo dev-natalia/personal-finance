@@ -1,9 +1,14 @@
 /** Consultas com cache (TanStack Query) usadas pelas telas. */
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 
 import { normalize } from '../domain/text'
 import { type TransactionQuery, api } from './endpoints'
-import type { CategoryKind } from './types'
+import type { CategoryKind, PreviewIn } from './types'
 
 export const queryKeys = {
   me: ['me'] as const,
@@ -13,6 +18,12 @@ export const queryKeys = {
   categories: (kind?: CategoryKind) => ['categories', kind ?? 'all'] as const,
   merchant: (normalized: string) => ['merchant', normalized] as const,
   transactions: (params: TransactionQuery) => ['transactions', params] as const,
+  // Tudo de cartão começa com 'cards' ou 'invoice', para uma invalidação pegar o conjunto.
+  cards: (includeArchived = false) => ['cards', includeArchived ? 'all' : 'active'] as const,
+  cardsSummary: ['cards', 'summary'] as const,
+  cardInvoices: (cardId: string) => ['cards', cardId, 'invoices'] as const,
+  invoice: (invoiceId: string) => ['invoice', invoiceId] as const,
+  preview: (cardId: string, body: PreviewIn) => ['cards', cardId, 'preview', body] as const,
 }
 
 export function useMe() {
@@ -78,7 +89,10 @@ export function useRecentTransactions() {
   return useQuery({ queryKey: queryKeys.transactions(params), queryFn: () => api.transactions(params) })
 }
 
-/** Depois de gravar algo, saldos, lançamentos e atalhos de pagamento precisam ser recarregados. */
+/**
+ * Depois de gravar algo, saldos, lançamentos, atalhos de pagamento e tudo de cartão (faturas,
+ * limite, prévias) precisam ser recarregados.
+ */
 export function useInvalidateLedger(): () => Promise<void> {
   const queryClient = useQueryClient()
   return async () => {
@@ -86,6 +100,48 @@ export function useInvalidateLedger(): () => Promise<void> {
       queryClient.invalidateQueries({ queryKey: queryKeys.balances }),
       queryClient.invalidateQueries({ queryKey: ['transactions'] }),
       queryClient.invalidateQueries({ queryKey: queryKeys.hints }),
+      queryClient.invalidateQueries({ queryKey: ['cards'] }),
+      queryClient.invalidateQueries({ queryKey: ['invoice'] }),
     ])
   }
+}
+
+export function useCards(includeArchived = false) {
+  return useQuery({
+    queryKey: queryKeys.cards(includeArchived),
+    queryFn: () => api.cards(includeArchived),
+  })
+}
+
+export function useCardsSummary() {
+  return useQuery({ queryKey: queryKeys.cardsSummary, queryFn: api.cardsSummary })
+}
+
+export function useCardInvoices(cardId: string) {
+  return useQuery({
+    queryKey: queryKeys.cardInvoices(cardId),
+    queryFn: () => api.cardInvoices(cardId),
+  })
+}
+
+export function useInvoice(invoiceId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.invoice(invoiceId ?? ''),
+    queryFn: () => api.invoice(invoiceId ?? ''),
+    enabled: invoiceId !== null,
+  })
+}
+
+/**
+ * Prévia do impacto de uma compra na fatura e no limite (o backend calcula; nada é gravado).
+ * `null` desliga a consulta (compra ainda incompleta). Mantém o resultado anterior enquanto o
+ * novo chega, para os números não piscarem a cada tecla.
+ */
+export function usePurchasePreview(input: { cardId: string; body: PreviewIn } | null) {
+  return useQuery({
+    queryKey: input ? queryKeys.preview(input.cardId, input.body) : ['cards', 'preview', 'off'],
+    queryFn: () => api.previewPurchase(input!.cardId, input!.body),
+    enabled: input !== null,
+    placeholderData: keepPreviousData,
+  })
 }
