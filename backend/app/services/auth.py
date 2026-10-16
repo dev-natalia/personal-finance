@@ -57,6 +57,11 @@ def login(
     normalized = normalize_email(email)[:320]
     ip = ip[:64]
     since = now - FAILURE_WINDOW
+    # Tentativas simultâneas para o mesmo e-mail ou IP são avaliadas uma de cada vez (até o fim
+    # da transação), senão uma rajada em paralelo veria sempre menos de 5 falhas registradas.
+    # Ordem fixa (e-mail, depois IP) evita impasse entre requisições.
+    for scope in (f"login-email:{normalized}", f"login-ip:{ip}"):
+        session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(scope, 0))))
     if (
         _recent_failures(session, LoginAttempt.email_normalized, normalized, since) >= MAX_FAILURES
         or _recent_failures(session, LoginAttempt.ip, ip, since) >= MAX_FAILURES

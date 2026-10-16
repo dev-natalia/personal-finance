@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.api.schemas.common import MerchantName, PositiveMoney
+from app.api.schemas.common import ApiDate, MerchantName, PositiveMoney
 from app.api.schemas.transactions import TransactionOut
 from app.models import AccountType, PaymentMethod
 
@@ -34,7 +34,7 @@ class EntryHintsOut(BaseModel):
 class EntryCheckItem(BaseModel):
     amount: PositiveMoney
     merchant: MerchantName | None = None
-    occurred_on: date
+    occurred_on: ApiDate
 
 
 class EntryChecksIn(BaseModel):

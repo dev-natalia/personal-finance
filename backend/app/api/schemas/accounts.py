@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from app.api.schemas.common import AccountName, Money, NoticeOut
+from app.api.schemas.common import AccountName, ApiDate, Money, NoticeOut
 from app.models import AccountType
 
 
@@ -11,14 +11,14 @@ class AccountIn(BaseModel):
     name: AccountName
     type: AccountType
     opening_balance: Money
-    opening_date: date
+    opening_date: ApiDate
 
 
 class AccountPatch(BaseModel):
     name: AccountName | None = None
     type: AccountType | None = None
     opening_balance: Money | None = None
-    opening_date: date | None = None
+    opening_date: ApiDate | None = None
 
 
 class AccountOut(BaseModel):

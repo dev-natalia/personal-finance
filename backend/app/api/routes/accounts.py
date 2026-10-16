@@ -1,4 +1,3 @@
-from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
@@ -13,7 +12,7 @@ from app.api.schemas.accounts import (
     AccountPatch,
     BalancesOut,
 )
-from app.api.schemas.common import NoticeOut
+from app.api.schemas.common import ApiDate, NoticeOut
 from app.models import Account
 from app.services import accounts, ledger
 
@@ -26,7 +25,7 @@ def list_accounts(ctx: CtxDep, db: DbDep, include_archived: bool = False) -> lis
 
 
 @router.get("/balances", response_model=BalancesOut)
-def balances(ctx: CtxDep, db: DbDep, as_of: date | None = None) -> BalancesOut:
+def balances(ctx: CtxDep, db: DbDep, as_of: ApiDate | None = None) -> BalancesOut:
     day = as_of or ctx.today()
     items = accounts.list_accounts(db, ctx, include_archived=True)
     values = ledger.account_balances(db, ctx.user_id, day)

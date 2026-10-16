@@ -41,6 +41,17 @@ uv run python -m app.cli set-password --email voce@example.com     # troca a sen
 uv run python -m app.cli revoke-sessions --email voce@example.com  # encerra todas as sessões
 ```
 
+## Implantação atrás de proxy (nuvem)
+
+Plataformas como Railway, Render e Fly.io colocam um proxy na frente da aplicação. Sem a configuração abaixo, todas as requisições parecem vir do IP do proxy, e o limite de tentativas de login por IP vira um limite único para todo mundo:
+
+```bash
+uv run uvicorn --factory app.main:create_app --host 0.0.0.0 --port 8000 \
+  --proxy-headers --forwarded-allow-ips="<IP ou faixa do proxy da plataforma>"
+```
+
+Use em `--forwarded-allow-ips` só o endereço do proxy da plataforma (nunca `*` com a porta exposta diretamente), senão qualquer cliente pode falsificar o próprio IP pelo cabeçalho `X-Forwarded-For`.
+
 ## Testes e verificação
 
 ```bash

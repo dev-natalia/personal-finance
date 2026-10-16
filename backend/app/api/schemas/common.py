@@ -2,10 +2,12 @@
 
 import re
 from collections.abc import Iterable
+from datetime import date
 from decimal import Decimal
 from typing import Annotated, Self
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
     BeforeValidator,
     Field,
@@ -14,6 +16,7 @@ from pydantic import (
     WithJsonSchema,
 )
 
+from app.domain.dates import MAX_DATE, MIN_DATE
 from app.domain.errors import Notice
 from app.domain.money import to_api
 
@@ -38,13 +41,32 @@ Money = Annotated[
 ]
 PositiveMoney = Annotated[Money, Field(gt=0)]
 
-Description = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
-Notes = Annotated[str, StringConstraints(strip_whitespace=True, max_length=1000)]
-MerchantName = Annotated[
-    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)
+# Datas de entrada (corpo e query): fora de 1900-2100 é erro de digitação.
+ApiDate = Annotated[date, Field(ge=MIN_DATE, le=MAX_DATE)]
+
+
+def _reject_nul(value: str) -> str:
+    """O PostgreSQL não aceita o caractere nulo em textos; recusamos antes de chegar lá."""
+    if "\x00" in value:
+        raise ValueError("o texto contém um caractere inválido")
+    return value
+
+
+NoNul = AfterValidator(_reject_nul)
+
+Description = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200), NoNul
 ]
-AccountName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
-CategoryName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)]
+Notes = Annotated[str, StringConstraints(strip_whitespace=True, max_length=1000), NoNul]
+MerchantName = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120), NoNul
+]
+AccountName = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80), NoNul
+]
+CategoryName = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60), NoNul
+]
 
 
 class NoticeOut(BaseModel):

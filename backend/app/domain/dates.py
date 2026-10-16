@@ -9,6 +9,11 @@ from zoneinfo import ZoneInfo
 
 _MONTH = re.compile(r"([0-9]{4})-([0-9]{2})")
 
+# Faixa de datas aceita em lançamentos e consultas. Fora dela, a entrada é tratada como erro
+# de digitação (e evita estouro de data em cálculos como a janela de ±2 dias).
+MIN_DATE = date(1900, 1, 1)
+MAX_DATE = date(2100, 12, 31)
+
 
 class Clock(Protocol):
     def now(self) -> datetime: ...
@@ -50,4 +55,6 @@ def parse_month(text: str) -> tuple[int, int]:
     year, month = int(match.group(1)), int(match.group(2))
     if not 1 <= month <= 12:
         raise ValueError("Mês inválido.")
+    if not MIN_DATE.year <= year <= MAX_DATE.year:
+        raise ValueError(f"O ano deve estar entre {MIN_DATE.year} e {MAX_DATE.year}.")
     return year, month

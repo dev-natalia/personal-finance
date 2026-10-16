@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.schemas.common import (
+    ApiDate,
     Description,
     MerchantName,
     Money,
@@ -19,7 +20,7 @@ from app.services.transactions import NewExpense, NewIncome, NewTransaction, New
 class IncomeIn(BaseModel):
     type: Literal["INCOME"]
     amount: PositiveMoney
-    occurred_on: date
+    occurred_on: ApiDate
     description: Description
     account_id: UUID
     category_id: UUID | None = None
@@ -30,7 +31,7 @@ class IncomeIn(BaseModel):
 class ExpenseIn(BaseModel):
     type: Literal["EXPENSE"]
     amount: PositiveMoney
-    occurred_on: date
+    occurred_on: ApiDate
     description: Description
     account_id: UUID
     payment_method: PaymentMethod
@@ -42,7 +43,7 @@ class ExpenseIn(BaseModel):
 class TransferIn(BaseModel):
     type: Literal["TRANSFER"]
     amount: PositiveMoney
-    occurred_on: date
+    occurred_on: ApiDate
     description: Description
     account_id: UUID
     destination_account_id: UUID
@@ -90,7 +91,7 @@ def to_new_transaction(body: IncomeIn | ExpenseIn | TransferIn) -> NewTransactio
 
 class RefundIn(BaseModel):
     amount: PositiveMoney
-    occurred_on: date
+    occurred_on: ApiDate
     account_id: UUID | None = None
     description: Description | None = None
 
@@ -99,7 +100,7 @@ class TransactionPatch(BaseModel):
     """Só os campos enviados são alterados. `null` em campo obrigatório gera erro 422."""
 
     amount: PositiveMoney | None = None
-    occurred_on: date | None = None
+    occurred_on: ApiDate | None = None
     description: Description | None = None
     notes: Notes | None = None
     merchant: MerchantName | None = None

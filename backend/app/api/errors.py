@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.domain.errors import (
@@ -99,6 +99,14 @@ async def _integrity_error(request: Request, exc: Exception) -> Response:
     )
 
 
+async def _data_error(request: Request, exc: Exception) -> Response:
+    # Valor que o banco recusa (ex.: caractere nulo numa busca). O valor não vai para o log.
+    logger.warning("data_error request_id=%s", request_id_of(request))
+    return problem(
+        422, "invalid_value", "Algum valor enviado não pôde ser processado.", request_id_of(request)
+    )
+
+
 async def _unexpected_error(request: Request, exc: Exception) -> Response:
     logger.exception("unhandled_error request_id=%s", request_id_of(request))
     return problem(
@@ -114,4 +122,5 @@ def install_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(RequestValidationError, _validation_error)
     app.add_exception_handler(StarletteHTTPException, _http_error)
     app.add_exception_handler(IntegrityError, _integrity_error)
+    app.add_exception_handler(DataError, _data_error)
     app.add_exception_handler(Exception, _unexpected_error)

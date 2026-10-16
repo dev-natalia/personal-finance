@@ -13,7 +13,7 @@ from decimal import Decimal
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import Engine, delete
+from sqlalchemy import Engine, delete, select
 from sqlalchemy.orm import Session
 
 from app.domain.dates import FixedClock
@@ -151,3 +151,40 @@ def test_double_click_on_full_refund_replays(engine: Engine, committed: Setup) -
     assert isinstance(second, WriteResult), repr(second)
     assert second.replayed
     assert second.transaction.id == first.transaction.id
+
+
+def test_parallel_wrong_passwords_cannot_bypass_login_limit(engine: Engine) -> None:
+    """10 tentativas erradas disparadas juntas: no máximo 5 chegam a ser avaliadas."""
+    from app.models import LoginAttempt
+    from app.services import auth
+    from app.services.users import create_user
+    from tests.support import POLICY
+
+    email = f"rajada-{uuid4().hex[:8]}@example.com"
+    with Session(engine) as session:
+        user_id = create_user(session, email, PASSWORD).id
+        session.commit()
+
+    start = threading.Barrier(10)
+
+    def attempt(index: int) -> None:
+        with Session(engine) as session:
+            start.wait(timeout=10)
+            auth.login(session, POLICY, email, "senha-errada-123", f"10.9.0.{index}", FIXED_NOW)
+            session.commit()
+
+    try:
+        threads = [threading.Thread(target=attempt, args=(i,)) for i in range(10)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=30)
+        with Session(engine) as session:
+            recorded = session.scalars(
+                select(LoginAttempt).where(LoginAttempt.email_normalized == email)
+            ).all()
+        assert len(recorded) == auth.MAX_FAILURES
+    finally:
+        with engine.begin() as conn:
+            conn.execute(delete(LoginAttempt).where(LoginAttempt.email_normalized == email))
+            conn.execute(delete(User).where(User.id == user_id))

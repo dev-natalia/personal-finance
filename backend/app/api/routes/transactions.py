@@ -1,11 +1,10 @@
-from datetime import date
 from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Header, Query, Response
 
 from app.api.deps import CtxDep, DbDep
-from app.api.schemas.common import NoticeOut
+from app.api.schemas.common import ApiDate, NoticeOut
 from app.api.schemas.transactions import (
     RefundIn,
     TransactionIn,
@@ -54,8 +53,8 @@ def create_transaction(
 def list_transactions(
     ctx: CtxDep,
     db: DbDep,
-    date_from: date | None = None,
-    date_to: date | None = None,
+    date_from: ApiDate | None = None,
+    date_to: ApiDate | None = None,
     account_id: UUID | None = None,
     category_id: UUID | None = None,
     merchant_id: UUID | None = None,

@@ -36,7 +36,9 @@ def test_parse_month_accepts_iso_month() -> None:
     assert parse_month("2026-10") == (2026, 10)
 
 
-@pytest.mark.parametrize("text", ["2026-13", "2026-00", "26-10", "2026/10", "abc", ""])
+@pytest.mark.parametrize(
+    "text", ["2026-13", "2026-00", "26-10", "2026/10", "abc", "", "0000-01", "1899-12", "2101-01"]
+)
 def test_parse_month_rejects(text: str) -> None:
     with pytest.raises(ValueError):
         parse_month(text)
