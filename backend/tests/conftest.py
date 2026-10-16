@@ -8,6 +8,12 @@ from alembic.config import Config
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session
 
+from app.domain.dates import FixedClock
+from app.models import Actor, User
+from app.services.context import RequestContext
+from app.services.users import create_user
+from tests.support import FIXED_NOW, PASSWORD
+
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+psycopg://finance:finance@localhost:5433/finance_test"
@@ -46,3 +52,28 @@ def db(engine: Engine) -> Iterator[Session]:
         session.close()
         outer.rollback()
         connection.close()
+
+
+@pytest.fixture
+def clock() -> FixedClock:
+    return FixedClock(FIXED_NOW)
+
+
+@pytest.fixture
+def user(db: Session) -> User:
+    return create_user(db, "ana@example.com", PASSWORD)
+
+
+@pytest.fixture
+def ctx(user: User, clock: FixedClock) -> RequestContext:
+    return RequestContext(
+        user_id=user.id, timezone=user.timezone, actor=Actor.USER, request_id="test", clock=clock
+    )
+
+
+@pytest.fixture
+def other_ctx(db: Session, clock: FixedClock) -> RequestContext:
+    other = create_user(db, "bia@example.com", PASSWORD)
+    return RequestContext(
+        user_id=other.id, timezone=other.timezone, actor=Actor.USER, request_id="test", clock=clock
+    )
