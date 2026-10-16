@@ -10,6 +10,7 @@ import { ACCOUNT_TYPE_LABELS } from '../../domain/labels'
 import { formatBRL, tryParseSignedMoney } from '../../domain/money'
 import { type Announce, useFocusOnReturn, useStatus } from '../../ui/focus'
 import { MoneyInput } from '../../ui/MoneyInput'
+import { CardsSection } from '../cards/CardsSection'
 import { Page } from '../../ui/Page'
 import {
   errorTextClass,
@@ -53,7 +54,7 @@ export function AccountsPage() {
   const balanceOf = new Map((balances.data?.accounts ?? []).map((b) => [b.account_id, b.balance]))
 
   return (
-    <Page title="Contas">
+    <Page title="Contas e cartões">
       {balances.data && (
         <p className="mb-2 flex items-baseline justify-between text-ink-soft">
           Total em contas
@@ -74,6 +75,7 @@ export function AccountsPage() {
         ))}
       </ul>
       <NewAccountForm onCreated={(name) => announce(`Conta ${name} criada.`)} />
+      <CardsSection onMessage={announce} />
     </Page>
   )
 }

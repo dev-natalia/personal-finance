@@ -63,7 +63,7 @@ test('successful login goes to the requested page', async () => {
   signedOutUntilLogin()
   renderWithProviders(<AppRoutes />, { route: '/contas' })
   await fillLogin('senha-certa-123')
-  expect(await screen.findByRole('heading', { name: 'Contas' })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: 'Contas e cartões' })).toBeInTheDocument()
 })
 
 test('wrong password shows the server message', async () => {
