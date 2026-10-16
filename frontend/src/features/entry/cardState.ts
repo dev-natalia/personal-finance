@@ -1,8 +1,9 @@
 /**
  * Estado do cartão de confirmação (lógica pura, sem tela).
  *
- * Regra da chave contra clique duplo: "Tentar de novo" reaproveita a mesma chave (é a mesma
- * tentativa); editar um item que falhou gera chave nova (o conteúdo mudou, é outra intenção).
+ * Regra da chave contra clique duplo, decidida na hora do envio (`prepareSend`): enviar de
+ * novo o mesmo conteúdo reaproveita a chave (é a mesma tentativa); conteúdo diferente do
+ * último envio gera chave nova (é outra intenção). Editar e desfazer não muda nada.
  */
 import { newIdempotencyKey } from '../../api/client'
 import type { ExpenseIn, IncomeIn } from '../../api/types'
@@ -12,7 +13,11 @@ import type { EntryType, ParsedItem, PaymentMethod, PendingField } from '../../d
 export type ItemStatus = 'draft' | 'sending' | 'saved' | 'error'
 
 export interface CardItem {
+  /** Identidade do item na tela; nunca muda (a chave de idempotência pode mudar). */
+  id: string
   key: string
+  /** Corpo do último envio (JSON), para saber se uma nova tentativa é o mesmo conteúdo. */
+  sentBody: string | null
   included: boolean
   type: EntryType
   /** O que a usuária vê e edita ("42,50"). */
@@ -39,13 +44,15 @@ export type CardAction =
   | { type: 'edit'; index: number; patch: Partial<EditableFields> }
   | { type: 'toggle'; index: number }
   | { type: 'duplicates'; index: number; count: number }
-  | { type: 'sending'; index: number }
+  | { type: 'sending'; index: number; key: string; sentBody: string }
   | { type: 'saved'; index: number; line: string; warnings: string[] }
   | { type: 'failed'; index: number; message: string }
 
 export function initCard(parsed: ParsedItem[]): CardItem[] {
   return parsed.map((item) => ({
+    id: newIdempotencyKey(),
     key: newIdempotencyKey(),
+    sentBody: null,
     included: true,
     type: item.type,
     amountText: item.amount ? toInputAmount(item.amount) : '',
@@ -73,7 +80,6 @@ function apply(item: CardItem, action: CardAction): CardItem {
       return {
         ...item,
         ...action.patch,
-        key: item.status === 'error' ? newIdempotencyKey() : item.key,
         status: item.status === 'error' ? 'draft' : item.status,
         error: null,
       }
@@ -82,7 +88,7 @@ function apply(item: CardItem, action: CardAction): CardItem {
     case 'duplicates':
       return { ...item, duplicates: action.count }
     case 'sending':
-      return { ...item, status: 'sending', error: null }
+      return { ...item, status: 'sending', error: null, key: action.key, sentBody: action.sentBody }
     case 'saved':
       return { ...item, status: 'saved', savedLine: action.line, warnings: action.warnings }
     case 'failed':
@@ -129,4 +135,16 @@ export function toRequestBody(item: CardItem): IncomeIn | ExpenseIn {
   if (item.type === 'INCOME') return { type: 'INCOME', ...base }
   if (item.paymentMethod === null) throw new Error('Despesa sem meio de pagamento.')
   return { type: 'EXPENSE', ...base, payment_method: item.paymentMethod }
+}
+
+/** Corpo e chave do envio: mesma chave para o mesmo conteúdo, chave nova se ele mudou. */
+export function prepareSend(item: CardItem): {
+  body: IncomeIn | ExpenseIn
+  key: string
+  sentBody: string
+} {
+  const body = toRequestBody(item)
+  const sentBody = JSON.stringify(body)
+  const key = item.sentBody === null || item.sentBody === sentBody ? item.key : newIdempotencyKey()
+  return { body, key, sentBody }
 }

@@ -1,3 +1,4 @@
+import { focusManager } from '@tanstack/react-query'
 import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { HttpResponse, http } from 'msw'
@@ -7,7 +8,7 @@ import { UNAUTHENTICATED_EVENT } from '../../api/client'
 import type { TransactionOut } from '../../api/types'
 import { AppRoutes } from '../../routes'
 import { expectNoA11yViolations } from '../../test/axe'
-import { ACCOUNTS, BALANCES, CATEGORIES, HINTS, USER, transaction } from '../../test/fixtures'
+import { ACCOUNTS, BALANCES, CATEGORIES, HINTS, TODAY, USER, transaction } from '../../test/fixtures'
 import { renderWithProviders } from '../../test/render'
 import { server } from '../../test/server'
 
@@ -104,6 +105,56 @@ test('confirming returns focus to the text field', async () => {
     expect(screen.queryByRole('heading', { name: 'Confirmar lançamento' })).not.toBeInTheDocument(),
   )
   expect(screen.getByLabelText('Novo lançamento')).toHaveFocus()
+  expect(screen.getByLabelText('Novo lançamento')).toHaveValue('')
+  expect(sessionStorage.getItem('pf:draft')).toBeNull()
+})
+
+test('the first confirmation lands in a live region that already existed', async () => {
+  mockHome()
+  server.use(
+    http.post('/api/v1/transactions', () =>
+      HttpResponse.json({ transaction: transaction(), replayed: false, warnings: [] }, { status: 201 }),
+    ),
+  )
+  renderWithProviders(<AppRoutes />, { route: '/' })
+  const user = userEvent.setup()
+  const field = await screen.findByLabelText('Novo lançamento')
+  const live = await screen.findByTestId('session-entries')
+  expect(live).toHaveAttribute('aria-live', 'polite')
+  expect(live).toBeEmptyDOMElement()
+  await user.type(field, '42 mercado pix itaú{Enter}')
+  await user.click(await screen.findByRole('button', { name: 'Confirmar' }))
+  await waitFor(() => expect(live).toHaveTextContent('Despesa registrada: R$ 42,00'))
+  expect(screen.getByTestId('session-entries')).toBe(live)
+})
+
+test('today is refreshed when the app comes back to the screen', async () => {
+  mockHome()
+  let today = TODAY
+  let calls = 0
+  server.use(
+    http.get('/api/v1/entry-hints', () => {
+      calls += 1
+      return HttpResponse.json({ ...HINTS, today })
+    }),
+  )
+  const { queryClient } = renderWithProviders(<AppRoutes />, { route: '/' })
+  const field = await screen.findByLabelText('Novo lançamento')
+  await waitFor(() => expect(calls).toBe(1))
+
+  // O app ficou em segundo plano e virou o dia.
+  today = '2026-10-16'
+  act(() => {
+    focusManager.setFocused(false)
+    focusManager.setFocused(true)
+  })
+  await waitFor(() =>
+    expect(queryClient.getQueryData<{ today: string }>(['entry-hints'])?.today).toBe('2026-10-16'),
+  )
+  expect(calls).toBe(2)
+  const user = userEvent.setup()
+  await user.type(field, '42 mercado pix itaú{Enter}')
+  expect(await screen.findByLabelText('Data')).toHaveValue('2026-10-16')
 })
 
 test('empty text does nothing', async () => {
@@ -129,6 +180,59 @@ test('draft survives the redirect to login', async () => {
   await user.click(screen.getByRole('button', { name: 'Entrar' }))
 
   await waitFor(() => expect(screen.getByLabelText('Novo lançamento')).toHaveValue('42 padaria'))
+})
+
+test('cancelling the card puts the text back in the field', async () => {
+  mockHome()
+  renderWithProviders(<AppRoutes />, { route: '/' })
+  const user = userEvent.setup()
+  await user.type(await screen.findByLabelText('Novo lançamento'), '42 mercado pix itaú{Enter}')
+  await user.click(await screen.findByRole('button', { name: 'Cancelar' }))
+  expect(screen.getByLabelText('Novo lançamento')).toHaveValue('42 mercado pix itaú')
+})
+
+test('text of an open card survives the redirect to login', async () => {
+  const session = mockHome()
+  server.use(http.post('/api/v1/transactions', () => unauthenticated()))
+  renderWithProviders(<AppRoutes />, { route: '/' })
+  const user = userEvent.setup()
+  await user.type(await screen.findByLabelText('Novo lançamento'), '42 mercado pix itaú{Enter}')
+  session.signedIn = false
+  await user.click(await screen.findByRole('button', { name: 'Confirmar' }))
+
+  await user.type(await screen.findByLabelText('E-mail'), 'ana@example.com')
+  await user.type(screen.getByLabelText('Senha'), 'senha-certa-123')
+  await user.click(screen.getByRole('button', { name: 'Entrar' }))
+  await waitFor(() =>
+    expect(screen.getByLabelText('Novo lançamento')).toHaveValue('42 mercado pix itaú'),
+  )
+})
+
+test('after a partial save only the unsaved items come back, with the date header', async () => {
+  mockHome()
+  server.use(
+    http.post('/api/v1/transactions', async ({ request }) => {
+      const body = (await request.json()) as { description: string }
+      if (body.description === 'café') {
+        return HttpResponse.json(
+          { status: 422, code: 'account_archived', detail: 'A conta Itaú está arquivada.' },
+          { status: 422 },
+        )
+      }
+      return HttpResponse.json({ transaction: transaction(), replayed: false, warnings: [] }, { status: 201 })
+    }),
+  )
+  renderWithProviders(<AppRoutes />, { route: '/' })
+  const user = userEvent.setup()
+  await user.type(
+    await screen.findByLabelText('Novo lançamento'),
+    'ontem: 42 mercado pix itaú; 8 café pix itaú{Enter}',
+  )
+  await user.click(await screen.findByRole('button', { name: 'Confirmar' }))
+  await screen.findByRole('alert')
+  expect(sessionStorage.getItem('pf:draft')).toBe('ontem: 8 café pix itaú')
+  await user.click(screen.getByRole('button', { name: 'Cancelar' }))
+  expect(screen.getByLabelText('Novo lançamento')).toHaveValue('ontem: 8 café pix itaú')
 })
 
 test('offline shows the banner and keeps the text', async () => {

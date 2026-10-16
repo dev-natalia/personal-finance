@@ -1,30 +1,24 @@
-import { type FormEvent, type KeyboardEvent, type Ref, useState } from 'react'
+import { type FormEvent, type KeyboardEvent, type Ref } from 'react'
 import { Link } from 'react-router'
 
 import { linkClass } from '../../ui/styles'
-import { loadDraft, saveDraft } from './draft'
 
 interface Props {
-  /** Devolve `true` se o texto virou um comprovante (aí o campo é limpo). */
-  onSubmit: (text: string) => boolean
+  value: string
+  onChange: (value: string) => void
+  /** Chamado com o texto; quem usa decide se ele virou comprovante e limpa o campo. */
+  onSubmit: (text: string) => void
   disabled: boolean
   /** Para a tela devolver o foco ao campo quando o comprovante fecha. */
   inputRef?: Ref<HTMLTextAreaElement>
 }
 
-/** Campo da tela inicial. O texto não enviado sobrevive a recarregar e à sessão expirar. */
-export function Composer({ onSubmit, disabled, inputRef }: Props) {
-  const [text, setText] = useState(loadDraft)
-
-  function change(value: string) {
-    setText(value)
-    saveDraft(value)
-  }
-
+/** Campo da tela inicial (o rascunho é guardado pela tela, junto com o comprovante aberto). */
+export function Composer({ value, onChange, onSubmit, disabled, inputRef }: Props) {
   function submit(event?: FormEvent) {
     event?.preventDefault()
-    if (disabled || text.trim() === '') return
-    if (onSubmit(text)) change('')
+    if (disabled || value.trim() === '') return
+    onSubmit(value)
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -41,8 +35,8 @@ export function Composer({ onSubmit, disabled, inputRef }: Props) {
           ref={inputRef}
           aria-label="Novo lançamento"
           rows={1}
-          value={text}
-          onChange={(e) => change(e.target.value)}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder="42 mercado pix itaú"
           className="max-h-32 min-h-8 flex-1 resize-none bg-transparent py-1 outline-none placeholder:text-ink-soft/70"

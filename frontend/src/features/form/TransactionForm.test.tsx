@@ -141,6 +141,20 @@ test('expense sends notes, merchant and the chosen category', async () => {
   })
 })
 
+test('changing the type drops a category of the other kind', async () => {
+  const api = mockApi()
+  const { user, onDone } = renderForm()
+  await screen.findByRole('option', { name: 'Saúde' })
+  await user.selectOptions(screen.getByLabelText('Categoria'), 'Saúde')
+  await user.selectOptions(screen.getByLabelText('Tipo'), 'Receita')
+  expect(screen.getByLabelText('Categoria')).toHaveDisplayValue('Sugestão automática')
+  await fillCommon(user, '100', 'Reembolso do plano')
+  await user.selectOptions(screen.getByLabelText('Recebido em'), 'Itaú')
+  await user.click(screen.getByRole('button', { name: 'Salvar lançamento' }))
+  await waitFor(() => expect(onDone).toHaveBeenCalled())
+  expect(api.created[0]!.body).not.toHaveProperty('category_id')
+})
+
 test('editing sends only changed fields', async () => {
   const api = mockApi()
   const { user, onDone } = renderForm(transaction())

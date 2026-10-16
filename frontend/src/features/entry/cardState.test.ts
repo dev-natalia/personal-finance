@@ -8,6 +8,7 @@ import {
   cardReducer,
   initCard,
   missingFields,
+  prepareSend,
   toRequestBody,
 } from './cardState'
 
@@ -81,7 +82,7 @@ describe('missingFields', () => {
 test('canConfirm requires complete included items', () => {
   expect(canConfirm(card())).toBe(true)
   expect(canConfirm(card(parsed({ paymentMethod: null })))).toBe(false)
-  const sending = cardReducer(card(), { type: 'sending', index: 0 })
+  const sending = cardReducer(card(), { type: 'sending', index: 0, key: 'k', sentBody: '{}' })
   expect(canConfirm(sending)).toBe(false)
 })
 
@@ -99,27 +100,41 @@ test('nothing left to confirm after everything is saved', () => {
   expect(canConfirm(state)).toBe(false)
 })
 
-test('editing a failed item creates a new key', () => {
+test('retry with the same content reuses the key', () => {
   let state = card()
-  const original = state[0]!.key
+  const first = prepareSend(state[0]!)
+  state = cardReducer(state, { type: 'sending', index: 0, key: first.key, sentBody: first.sentBody })
   state = cardReducer(state, { type: 'failed', index: 0, message: 'Sem conexão.' })
-  state = cardReducer(state, { type: 'edit', index: 0, patch: { description: 'padaria' } })
-  expect(state[0]!.key).not.toBe(original)
+  expect(state[0]).toMatchObject({ status: 'error', error: 'Sem conexão.' })
+  expect(prepareSend(state[0]!).key).toBe(first.key)
 })
 
-test('editing a draft keeps the key', () => {
+test('retry after changing the content uses a new key', () => {
   let state = card()
-  const original = state[0]!.key
+  const first = prepareSend(state[0]!)
+  state = cardReducer(state, { type: 'sending', index: 0, key: first.key, sentBody: first.sentBody })
+  state = cardReducer(state, { type: 'failed', index: 0, message: 'Sem conexão.' })
   state = cardReducer(state, { type: 'edit', index: 0, patch: { description: 'padaria' } })
-  expect(state[0]!.key).toBe(original)
+  expect(prepareSend(state[0]!).key).not.toBe(first.key)
 })
 
-test('failure keeps the key for retry', () => {
+test('typing and undoing an edit keeps the key', () => {
   let state = card()
-  const original = state[0]!.key
-  state = cardReducer(state, { type: 'sending', index: 0 })
+  const first = prepareSend(state[0]!)
+  state = cardReducer(state, { type: 'sending', index: 0, key: first.key, sentBody: first.sentBody })
   state = cardReducer(state, { type: 'failed', index: 0, message: 'Sem conexão.' })
-  expect(state[0]).toMatchObject({ key: original, status: 'error', error: 'Sem conexão.' })
+  state = cardReducer(state, { type: 'edit', index: 0, patch: { description: 'mercadox' } })
+  state = cardReducer(state, { type: 'edit', index: 0, patch: { description: 'mercado' } })
+  expect(prepareSend(state[0]!).key).toBe(first.key)
+})
+
+test('editing never changes the item identity', () => {
+  let state = card()
+  const id = state[0]!.id
+  state = cardReducer(state, { type: 'failed', index: 0, message: 'Sem conexão.' })
+  state = cardReducer(state, { type: 'edit', index: 0, patch: { description: 'padaria' } })
+  expect(state[0]!.id).toBe(id)
+  expect(state[0]!.status).toBe('draft')
 })
 
 test('saved items are immutable', () => {

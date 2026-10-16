@@ -72,6 +72,12 @@ function dateHeader(text: string, today: string): { date: string; rest: string }
   return { date: date.date, rest: text.slice(match[0].length) }
 }
 
+/** O cabeçalho de data do lote como foi digitado ("dia 3:"), ou `null` se não houver. */
+export function batchHeader(text: string, today: string): string | null {
+  const header = dateHeader(text, today)
+  return header ? text.slice(0, text.length - header.rest.length).trim() : null
+}
+
 function parseItem(raw: string, ctx: ParseContext, defaultDate: string): ParsedItem {
   const tokens: Token[] = raw
     .split(/\s+/)

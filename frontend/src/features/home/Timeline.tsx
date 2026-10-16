@@ -77,20 +77,23 @@ export function Timeline({ today, accountNames, sessionEntries }: Props) {
           </ul>
         </div>
       ))}
-      {sessionEntries.length > 0 && (
-        <ul aria-live="polite" className="mt-3 flex flex-col gap-1">
-          {sessionEntries.map((entry, index) => (
-            <li key={index} className="text-sm">
-              <p>{entry.line}</p>
-              {entry.warnings.map((warning) => (
-                <p key={warning} className={errorTextClass}>
-                  {warning}
-                </p>
-              ))}
-            </li>
-          ))}
-        </ul>
-      )}
+      {/* A região fica sempre na página: leitores de tela ignoram uma que nasce já com texto. */}
+      <div aria-live="polite" data-testid="session-entries">
+        {sessionEntries.length > 0 && (
+          <ul className="mt-3 flex flex-col gap-1">
+            {sessionEntries.map((entry, index) => (
+              <li key={index} className="text-sm">
+                <p>{entry.line}</p>
+                {entry.warnings.map((warning) => (
+                  <p key={warning} className={errorTextClass}>
+                    {warning}
+                  </p>
+                ))}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </section>
   )
 }

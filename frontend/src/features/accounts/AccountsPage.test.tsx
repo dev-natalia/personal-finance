@@ -82,6 +82,9 @@ test('lists accounts with formatted balances', async () => {
 test('creates an account sending the canonical amount', async () => {
   const captured = mockAccounts()
   const { user } = renderPage()
+  // A região de status já existe (vazia) antes da primeira mensagem, para o leitor de tela ler.
+  const status = await screen.findByRole('status')
+  expect(status).toBeEmptyDOMElement()
   await fillNewAccount(user, 'Reserva', '1.000,50')
   await waitFor(() => expect(captured.created).toHaveLength(1))
   expect(captured.created[0]).toEqual({
@@ -90,7 +93,8 @@ test('creates an account sending the canonical amount', async () => {
     opening_balance: '1000.50',
     opening_date: '2026-10-01',
   })
-  expect(await screen.findByRole('status')).toHaveTextContent('Conta Reserva criada.')
+  await waitFor(() => expect(status).toHaveTextContent('Conta Reserva criada.'))
+  expect(screen.getByRole('status')).toBe(status)
 })
 
 test('accepts a negative opening balance', async () => {

@@ -100,9 +100,11 @@ test('confirm posts with an idempotency key and reports the saved line', async (
   await waitFor(() => expect(onClose).toHaveBeenCalled())
   expect(sent).toHaveLength(1)
   expect(sent[0]!.key).toMatch(/^[0-9a-f-]{36}$/)
-  expect(onSaved).toHaveBeenCalledWith([
-    { line: 'Despesa registrada: R$ 42,00 em Mercado, paga com Pix Itaú.', warnings: [] },
-  ])
+  expect(onSaved).toHaveBeenCalledWith(
+    [{ line: 'Despesa registrada: R$ 42,00 em Mercado, paga com Pix Itaú.', warnings: [] }],
+    [],
+  )
+  expect(onClose).toHaveBeenCalledWith([])
 })
 
 test('retry after network failure reuses the same idempotency key', async () => {
@@ -133,6 +135,49 @@ test('batch with one failure keeps the others saved and retries only the failed 
   await waitFor(() => expect(sent).toHaveLength(3))
   expect(sent.map((s) => s.body.description)).toEqual(['mercado', 'café', 'café'])
   expect(sent[2]!.key).toBe(sent[1]!.key)
+})
+
+test('typing into a failed item keeps focus and every keystroke', async () => {
+  mockApi((_, attempt) =>
+    attempt === 1
+      ? HttpResponse.json(
+          { status: 422, code: 'account_archived', detail: 'A conta Itaú está arquivada.' },
+          { status: 422 },
+        )
+      : created(),
+  )
+  const { user } = renderCard([parsed()])
+  await user.click(await screen.findByRole('button', { name: 'Confirmar' }))
+  await screen.findByRole('alert')
+  const description = screen.getByLabelText('Descrição')
+  await user.click(description)
+  await user.type(description, 'xy')
+  expect(screen.getByLabelText('Descrição')).toHaveValue('mercadoxy')
+  expect(screen.getByLabelText('Descrição')).toHaveFocus()
+})
+
+test('items are locked while the batch is being sent', async () => {
+  let release: () => void = () => undefined
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  mockApi(() => created())
+  server.use(
+    http.post('/api/v1/transactions', async () => {
+      await gate
+      return created()
+    }),
+  )
+  const { user, onClose } = renderCard([parsed(), parsed({ description: 'café', amount: '8.00' })])
+  const confirm = await screen.findByRole('button', { name: 'Confirmar' })
+  await user.click(confirm)
+  const checkboxes = screen.getAllByRole('checkbox', { name: 'Incluir este lançamento' })
+  await waitFor(() => expect(checkboxes[1]).toBeDisabled())
+  // O botão não é desabilitado (perderia o foco); só ignora novos toques durante o envio.
+  expect(confirm).toHaveFocus()
+  expect(confirm).toHaveAttribute('aria-disabled', 'true')
+  release()
+  await waitFor(() => expect(onClose).toHaveBeenCalled())
 })
 
 test('unchecked items are not sent', async () => {

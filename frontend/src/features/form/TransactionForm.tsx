@@ -220,7 +220,10 @@ export function TransactionForm({ initial, onDone, onCancel }: Props) {
           <select
             id={`${id}-type`}
             value={f.type}
-            onChange={(e) => set('type')(e.target.value as NewType)}
+            // Categoria é por tipo (despesa ou receita): a escolhida antes não vale mais.
+            onChange={(e) =>
+              setF((p) => ({ ...p, type: e.target.value as NewType, category: AUTOMATIC }))
+            }
             className={inputClass}
           >
             {NEW_TYPES.map((type) => (

@@ -25,10 +25,12 @@ interface Props {
   hints: EntryHintsOut
   categories: CategoryOut[]
   dispatch: Dispatch<CardAction>
+  /** Lote sendo enviado: nada muda até terminar (o envio usa os valores do toque em Confirmar). */
+  locked?: boolean
 }
 
 /** Campos editáveis de um item do comprovante. */
-export function ItemEditor({ item, index, total, hints, categories, dispatch }: Props) {
+export function ItemEditor({ item, index, total, hints, categories, dispatch, locked = false }: Props) {
   const id = useId()
   const suggestion = useMerchantSuggestion(item.description)
   const edit: Edit = (patch) => dispatch({ type: 'edit', index, patch })
@@ -52,7 +54,7 @@ export function ItemEditor({ item, index, total, hints, categories, dispatch }: 
   const categoryValue = item.categoryId ?? suggestion.data ?? unclassified?.id ?? ''
   const missing = missingFields(item)
   const isRetro = item.occurredOn !== hints.today
-  const disabled = item.status === 'sending'
+  const disabled = locked || item.status === 'sending'
 
   return (
     <fieldset disabled={disabled} className="py-1">

@@ -6,15 +6,30 @@ import { useCategories, useInvalidateLedger } from '../../api/queries'
 import type { EntryHintsOut } from '../../api/types'
 import type { ParsedItem } from '../../domain/parser'
 import { primaryButtonClass, secondaryButtonClass, slipClass } from '../../ui/styles'
-import { amountOf, canConfirm, cardReducer, initCard, toRequestBody } from './cardState'
+import {
+  type CardItem,
+  amountOf,
+  canConfirm,
+  cardReducer,
+  initCard,
+  prepareSend,
+} from './cardState'
 import { type Names, type SavedEntry, describeSaved } from './describe'
 import { ItemEditor } from './ItemEditor'
 
 interface Props {
   parsed: ParsedItem[]
   hints: EntryHintsOut
-  onSaved: (entries: SavedEntry[]) => void
-  onClose: () => void
+  /** `unsaved`: índices dos itens ainda não gravados (a tela guarda o texto deles). */
+  onSaved: (entries: SavedEntry[], unsaved: number[]) => void
+  /** Ao fechar; `unsaved` volta para o campo (vazio quando tudo o que foi incluído gravou). */
+  onClose: (unsaved: number[]) => void
+}
+
+function unsavedOf(items: CardItem[], savedNow: Set<number>): number[] {
+  return items.flatMap((item, index) =>
+    item.status === 'saved' || savedNow.has(index) ? [] : [index],
+  )
 }
 
 /** Comprovante de confirmação: nada é gravado sem o toque em "Confirmar". */
@@ -66,21 +81,25 @@ export function ConfirmationCard({ parsed, hints, onSaved, onClose }: Props) {
   }, []) // só ao abrir o comprovante
 
   async function confirm() {
+    if (busy) return
     setBusy(true)
     const saved: SavedEntry[] = []
+    const savedNow = new Set<number>()
     let failures = 0
     // Em sequência, só os incluídos e ainda não gravados, cada um com a sua chave.
     for (const [index, item] of items.entries()) {
       if (!item.included || item.status === 'saved') continue
-      dispatch({ type: 'sending', index })
+      const { body, key, sentBody } = prepareSend(item)
+      dispatch({ type: 'sending', index, key, sentBody })
       try {
-        const result = await api.createTransaction(toRequestBody(item), item.key)
+        const result = await api.createTransaction(body, key)
         const entry = {
           line: describeSaved(result.transaction, names),
           warnings: (result.warnings ?? []).map((w) => w.detail),
         }
         dispatch({ type: 'saved', index, ...entry })
         saved.push(entry)
+        savedNow.add(index)
       } catch (error) {
         failures += 1
         const message = error instanceof ApiError ? error.detail : 'Erro inesperado. Tente de novo.'
@@ -88,11 +107,18 @@ export function ConfirmationCard({ parsed, hints, onSaved, onClose }: Props) {
       }
     }
     setBusy(false)
+    const unsaved = unsavedOf(items, savedNow)
     if (saved.length > 0) {
+      // Primeiro o rascunho (mesmo que a sessão expire no meio), depois o recarregamento.
+      onSaved(saved, unsaved)
       await invalidateLedger()
-      onSaved(saved)
     }
-    if (failures === 0) onClose()
+    // Tudo o que foi incluído gravou: os itens desmarcados foram descartados de propósito.
+    if (failures === 0) onClose([])
+  }
+
+  function cancel() {
+    onClose(unsavedOf(items, new Set()))
   }
 
   const title = items.length > 1 ? 'Confirmar lançamentos' : 'Confirmar lançamento'
@@ -105,7 +131,7 @@ export function ConfirmationCard({ parsed, hints, onSaved, onClose }: Props) {
       onKeyDown={(event) => {
         if (event.key === 'Escape' && !busy) {
           event.preventDefault()
-          onClose()
+          cancel()
         }
       }}
       className={`${slipClass} mx-1 my-3`}
@@ -121,13 +147,14 @@ export function ConfirmationCard({ parsed, hints, onSaved, onClose }: Props) {
       <div className="divide-y divide-dashed divide-ink-soft/40">
         {items.map((item, index) => (
           <ItemEditor
-            key={item.key}
+            key={item.id}
             item={item}
             index={index}
             total={items.length}
             hints={hints}
             categories={categories.data ?? []}
             dispatch={dispatch}
+            locked={busy}
           />
         ))}
       </div>
@@ -138,12 +165,14 @@ export function ConfirmationCard({ parsed, hints, onSaved, onClose }: Props) {
         <button
           type="button"
           onClick={confirm}
-          disabled={busy || !canConfirm(items)}
+          // Durante o envio o botão só ignora toques: desabilitá-lo tiraria o foco dele.
+          disabled={!busy && !canConfirm(items)}
+          aria-disabled={busy || undefined}
           className={`${primaryButtonClass} flex-1`}
         >
           {hasErrors ? 'Tentar de novo' : 'Confirmar'}
         </button>
-        <button type="button" onClick={onClose} disabled={busy} className={secondaryButtonClass}>
+        <button type="button" onClick={cancel} disabled={busy} className={secondaryButtonClass}>
           Cancelar
         </button>
       </div>

@@ -19,8 +19,18 @@ export function useMe() {
   return useQuery({ queryKey: queryKeys.me, queryFn: api.me, retry: false, staleTime: 60_000 })
 }
 
+/**
+ * "Hoje" vem daqui: atualizado sempre que o app volta para a tela e a cada 5 minutos com ele
+ * visível. Sem isto, um PWA aberto desde ontem registraria a primeira frase do dia com a data
+ * de ontem (e, na virada do mês, no mês errado).
+ */
 export function useEntryHints() {
-  return useQuery({ queryKey: queryKeys.hints, queryFn: api.entryHints })
+  return useQuery({
+    queryKey: queryKeys.hints,
+    queryFn: api.entryHints,
+    refetchOnWindowFocus: 'always',
+    refetchInterval: 5 * 60_000,
+  })
 }
 
 /** Com `includeArchived`, inclui as arquivadas (nomes de lançamentos antigos, filtros). */

@@ -20,7 +20,7 @@ export type Announce = (text: string, options?: { focus?: boolean }) => void
  */
 export function useStatus(): { announce: Announce; status: ReactNode } {
   const [current, setCurrent] = useState<{ text: string; focus: boolean; id: number } | null>(null)
-  const ref = useRef<HTMLParagraphElement>(null)
+  const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (current?.focus) ref.current?.focus()
@@ -29,15 +29,13 @@ export function useStatus(): { announce: Announce; status: ReactNode } {
   const announce: Announce = (text, options = {}) =>
     setCurrent((previous) => ({ text, focus: options.focus ?? false, id: (previous?.id ?? 0) + 1 }))
 
-  const status = current && (
-    <p
-      ref={ref}
-      role="status"
-      tabIndex={-1}
-      className="mb-2 border-l-4 border-pen bg-slip px-3 py-2 text-sm"
-    >
-      {current.text}
-    </p>
+  // A região existe desde o início (vazia): leitores de tela ignoram uma que nasce já com texto.
+  const status = (
+    <div ref={ref} role="status" tabIndex={-1}>
+      {current && (
+        <p className="mb-2 border-l-4 border-pen bg-slip px-3 py-2 text-sm">{current.text}</p>
+      )}
+    </div>
   )
   return { announce, status }
 }
