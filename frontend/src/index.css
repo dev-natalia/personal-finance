@@ -1,4 +1,5 @@
-@import "@fontsource-variable/recursive";
+/* Variante "mono": eixos de peso e MONO (o comprovante usa a voz monoespaçada). */
+@import "@fontsource-variable/recursive/mono.css";
 @import "tailwindcss";
 
 /* Direção visual "comprovante": papel, tinta, caneta azul e carimbo. */
@@ -34,6 +35,45 @@
   select,
   textarea {
     font-size: 1rem;
+  }
+}
+
+/* Comprovante: papel branco com bordas picotadas, que "sai da impressora" ao aparecer. */
+@layer components {
+  .slip {
+    box-shadow: 0 1px 0 var(--color-rule);
+    animation: slip-print 220ms ease-out;
+  }
+
+  .slip::before,
+  .slip::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 8px;
+    background: radial-gradient(circle at 6px 0, var(--color-paper) 5px, transparent 5.5px) 0 0 /
+      12px 8px repeat-x;
+  }
+
+  .slip::before {
+    top: -1px;
+  }
+
+  .slip::after {
+    bottom: -1px;
+    transform: rotate(180deg);
+  }
+}
+
+@keyframes slip-print {
+  from {
+    clip-path: inset(0 0 100% 0);
+    transform: translateY(-6px);
+  }
+  to {
+    clip-path: inset(0);
+    transform: none;
   }
 }
 
