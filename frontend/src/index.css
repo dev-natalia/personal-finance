@@ -1,0 +1,96 @@
+/* Variante "mono": eixos de peso e MONO (o comprovante usa a voz monoespaçada). */
+@import "@fontsource-variable/recursive/mono.css";
+@import "tailwindcss";
+
+/* Direção visual "comprovante": papel, tinta, caneta azul e carimbo. */
+@theme {
+  --font-sans: "Recursive Variable", system-ui, sans-serif;
+  --color-paper: #f3f5f2;
+  --color-ink: #1b2340;
+  --color-ink-soft: #4a5373;
+  --color-pen: #2440c4;
+  --color-stamp: #b8322a;
+  --color-income: #1f7a4d;
+  --color-rule: #d5dbd6;
+  --color-slip: #ffffff;
+  --color-highlight: #fff3c4;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-variation-settings: "MONO" 0, "CASL" 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--color-pen);
+    outline-offset: 2px;
+  }
+
+  /* 16px evita o zoom automático do iPhone ao focar um campo. */
+  input,
+  select,
+  textarea {
+    font-size: 1rem;
+  }
+}
+
+/* Comprovante: papel branco com bordas picotadas, que "sai da impressora" ao aparecer. */
+@layer components {
+  .slip {
+    box-shadow: 0 1px 0 var(--color-rule);
+    animation: slip-print 220ms ease-out;
+  }
+
+  .slip::before,
+  .slip::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 8px;
+    background: radial-gradient(circle at 6px 0, var(--color-paper) 5px, transparent 5.5px) 0 0 /
+      12px 8px repeat-x;
+  }
+
+  .slip::before {
+    top: -1px;
+  }
+
+  .slip::after {
+    bottom: -1px;
+    transform: rotate(180deg);
+  }
+}
+
+@keyframes slip-print {
+  from {
+    clip-path: inset(0 0 100% 0);
+    transform: translateY(-6px);
+  }
+  to {
+    clip-path: inset(0);
+    transform: none;
+  }
+}
+
+@utility slip-mono {
+  font-variation-settings: "MONO" 1, "CASL" 0;
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

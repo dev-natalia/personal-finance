@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse, Response
 from sqlalchemy.exc import DataError, IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.api.security_headers import apply_security_headers
 from app.domain.errors import (
     Conflict,
     DomainError,
@@ -17,6 +18,7 @@ from app.domain.errors import (
     TooManyAttempts,
     Unauthenticated,
 )
+from app.models import TransactionType
 
 logger = logging.getLogger("app.errors")
 
@@ -37,6 +39,16 @@ _TITLES = {
     429: "Muitas tentativas",
     500: "Erro interno",
 }
+
+
+# Erros de protocolo (fora das regras de negócio) também com código estável e texto em português.
+_HTTP_ERRORS: dict[int, tuple[str, str]] = {
+    400: ("invalid_body", "O corpo da requisição não pôde ser lido (envie JSON em UTF-8)."),
+    404: ("not_found", "Endereço não encontrado."),
+    405: ("method_not_allowed", "Método não permitido neste endereço."),
+}
+# Rótulos do union de lançamentos que o Pydantic põe no caminho do campo (ex.: "EXPENSE.amount").
+_UNION_TAGS = frozenset(t.value for t in TransactionType)
 
 
 def request_id_of(request: Request) -> str:
@@ -70,14 +82,15 @@ async def _domain_error(request: Request, exc: Exception) -> Response:
 
 async def _validation_error(request: Request, exc: Exception) -> Response:
     assert isinstance(exc, RequestValidationError)
+    if any(err["type"] == "json_invalid" for err in exc.errors()):
+        return problem(
+            422,
+            "invalid_body",
+            "O corpo da requisição não é um JSON válido.",
+            request_id_of(request),
+        )
     # O valor recebido (`input`) nunca volta na resposta: pode conter dados financeiros.
-    errors = [
-        {
-            "field": ".".join(str(part) for part in err["loc"][1:]) or str(err["loc"][0]),
-            "message": err["msg"],
-        }
-        for err in exc.errors()
-    ]
+    errors = [{"field": _field_path(err["loc"]), "message": err["msg"]} for err in exc.errors()]
     return problem(
         422,
         "validation_error",
@@ -87,9 +100,15 @@ async def _validation_error(request: Request, exc: Exception) -> Response:
     )
 
 
+def _field_path(loc: tuple[int | str, ...]) -> str:
+    parts = [str(part) for part in loc[1:] if str(part) not in _UNION_TAGS]
+    return ".".join(parts) or str(loc[0])
+
+
 async def _http_error(request: Request, exc: Exception) -> Response:
     assert isinstance(exc, StarletteHTTPException)
-    return problem(exc.status_code, "http_error", str(exc.detail), request_id_of(request))
+    code, detail = _HTTP_ERRORS.get(exc.status_code, ("http_error", str(exc.detail)))
+    return problem(exc.status_code, code, detail, request_id_of(request))
 
 
 async def _integrity_error(request: Request, exc: Exception) -> Response:
@@ -109,12 +128,16 @@ async def _data_error(request: Request, exc: Exception) -> Response:
 
 async def _unexpected_error(request: Request, exc: Exception) -> Response:
     logger.exception("unhandled_error request_id=%s", request_id_of(request))
-    return problem(
+    response = problem(
         500,
         "internal_error",
         "Erro inesperado. Informe o código da requisição se o problema continuar.",
         request_id_of(request),
     )
+    # O erro 500 é respondido fora da pilha de middlewares: os cabeçalhos são postos aqui.
+    response.headers["X-Request-ID"] = request_id_of(request)
+    apply_security_headers(response.headers)
+    return response
 
 
 def install_error_handlers(app: FastAPI) -> None:
