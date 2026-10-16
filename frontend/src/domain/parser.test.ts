@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'vitest'
 
-import { type EntryAccount, type ParsedItem, parseEntry } from './parser'
+import { type EntryAccount, type ParseContext, type ParsedItem, parseEntry } from './parser'
 
 const ITAU: EntryAccount = { id: 'itau', name: 'Itaú', type: 'CHECKING' }
 const NUBANK: EntryAccount = { id: 'nubank', name: 'Nubank', type: 'CHECKING' }
 const CARTEIRA: EntryAccount = { id: 'carteira', name: 'Carteira', type: 'CASH' }
 const TODAY = '2026-10-15'
-const CTX = { today: TODAY, accounts: [ITAU, NUBANK, CARTEIRA] }
+const CTX: ParseContext = { today: TODAY, accounts: [ITAU, NUBANK, CARTEIRA], cards: [] }
 
 function only(text: string, ctx = CTX): ParsedItem {
   const items = parseEntry(text, ctx)
@@ -82,7 +82,11 @@ describe('parseEntry', () => {
   })
 
   test('prefers the longest account name', () => {
-    const ctx = { today: TODAY, accounts: [ITAU, { id: 'itau-pj', name: 'Itaú PJ', type: 'CHECKING' as const }] }
+    const ctx = {
+      today: TODAY,
+      accounts: [ITAU, { id: 'itau-pj', name: 'Itaú PJ', type: 'CHECKING' as const }],
+      cards: [],
+    }
     const item = only('10 lanche itaú pj pix', ctx)
     expect(item.accountId).toBe('itau-pj')
     expect(item.description).toBe('lanche')
@@ -135,5 +139,99 @@ describe('parseEntry', () => {
       '42 mercado',
       '8 café',
     ])
+  })
+})
+
+describe('parseEntry with cards', () => {
+  const NUBANK_CARD = { id: 'card-nubank', name: 'Nubank' }
+  const INTER_CARD = { id: 'card-inter', name: 'Inter' }
+  const WITH_CARD = { ...CTX, cards: [NUBANK_CARD] }
+
+  test('credit word picks the card', () => {
+    for (const text of ['38 ifood crédito nubank', '38 ifood cartão nubank']) {
+      expect(only(text, WITH_CARD)).toMatchObject({
+        cardId: 'card-nubank',
+        accountId: null,
+        paymentMethod: 'CREDIT',
+        installments: null,
+        description: 'ifood',
+        pending: [],
+      })
+    }
+  })
+
+  test('pix keeps the account', () => {
+    expect(only('38 ifood pix nubank', WITH_CARD)).toMatchObject({
+      accountId: 'nubank',
+      cardId: null,
+      paymentMethod: 'PIX',
+      pending: [],
+    })
+  })
+
+  test('name shared by account and card stays pending', () => {
+    const item = only('38 ifood nubank', WITH_CARD)
+    expect(item).toMatchObject({ accountId: null, cardId: null, paymentMethod: null })
+    expect(item.description).toBe('ifood')
+    expect(item.pending).toContain('paymentMethod')
+  })
+
+  test.each(['1200 celular nubank 6x', '1200 celular em 6x nubank', '1200 celular nubank 6 vezes'])(
+    'installments imply the card: %s',
+    (text) => {
+      expect(only(text, WITH_CARD)).toMatchObject({
+        amount: '1200.00',
+        installments: 6,
+        cardId: 'card-nubank',
+        accountId: null,
+        paymentMethod: 'CREDIT',
+        description: 'celular',
+        pending: [],
+      })
+    },
+  )
+
+  test('25x is not installments', () => {
+    const item = only('1200 celular nubank 25x', WITH_CARD)
+    expect(item.installments).toBeNull()
+    expect(item.description).toContain('25x')
+  })
+
+  test('credit without card name uses the only card', () => {
+    expect(only('38 ifood crédito', WITH_CARD)).toMatchObject({
+      cardId: 'card-nubank',
+      paymentMethod: 'CREDIT',
+      pending: [],
+    })
+  })
+
+  test('credit with two cards stays pending', () => {
+    const item = only('38 ifood crédito', { ...CTX, cards: [NUBANK_CARD, INTER_CARD] })
+    expect(item.cardId).toBeNull()
+    expect(item.pending).toContain('paymentMethod')
+  })
+
+  test('card name only matches card', () => {
+    expect(only('38 ifood inter', { ...CTX, cards: [INTER_CARD] })).toMatchObject({
+      cardId: 'card-inter',
+      accountId: null,
+      paymentMethod: 'CREDIT',
+      description: 'ifood',
+      pending: [],
+    })
+  })
+
+  test('income never becomes a card', () => {
+    expect(only('recebi 3000 salário nubank', WITH_CARD)).toMatchObject({
+      type: 'INCOME',
+      accountId: 'nubank',
+      cardId: null,
+      installments: null,
+      paymentMethod: null,
+    })
+  })
+
+  test('without cards nothing changes', () => {
+    expect(only('42 mercado pix itaú')).toMatchObject({ cardId: null, installments: null })
   })
 })

@@ -20,6 +20,8 @@ function parsed(overrides: Partial<ParsedItem> = {}): ParsedItem {
     description: 'mercado',
     occurredOn: '2026-10-15',
     accountId: 'acc-itau',
+    cardId: null,
+    installments: null,
     paymentMethod: 'PIX',
     pending: [],
     ...overrides,
