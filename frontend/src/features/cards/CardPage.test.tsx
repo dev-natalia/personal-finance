@@ -288,3 +288,15 @@ test('no pay button without a payable invoice', async () => {
   await screen.findByText('Fatura de novembro, aberta')
   expect(screen.queryByRole('button', { name: /Pagar fatura/ })).not.toBeInTheDocument()
 })
+
+test('closed invoice from the opening state offers no purchase shortcut', async () => {
+  mockApi({ ...NUBANK, card: { ...NUBANK.card, opening_date: '2026-10-15' } })
+  renderPage()
+  const closed = await screen.findByRole('region', { name: 'Fatura de outubro, fechada' })
+  expect(within(closed).queryByRole('link', { name: 'Registrar compra' })).not.toBeInTheDocument()
+  expect(
+    within(closed).getByText(
+      'Esta fatura veio do total informado ao cadastrar o cartão; compras antes de 15/10 não entram no app.',
+    ),
+  ).toBeInTheDocument()
+})

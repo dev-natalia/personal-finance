@@ -180,6 +180,10 @@ function PayableInvoice({
 }) {
   const headingId = useId()
   const [charging, setCharging] = useState(false)
+  // Compra esquecida entra na véspera do fechamento; antes do início do cartão o backend
+  // recusa (a fatura fechada do cadastro é só o total informado).
+  const purchaseDate = addDays(invoice.closing_date, -1)
+  const canRegister = purchaseDate >= card.opening_date
   return (
     <section aria-labelledby={headingId} className="mt-6">
       <h2 id={headingId} className="mb-1 text-lg font-[650]">
@@ -191,13 +195,21 @@ function PayableInvoice({
         <ReportedTotal key={invoice.id} invoiceId={invoice.id} card={card} invoice={invoice} />
       )}
       <Difference amount={invoice.difference} />
+      {!canRegister && (
+        <p className="mt-2 text-sm text-ink-soft">
+          Esta fatura veio do total informado ao cadastrar o cartão; compras antes de{' '}
+          {shortDate(card.opening_date)} não entram no app.
+        </p>
+      )}
       <div className="mt-2 flex flex-wrap gap-1">
-        <Link
-          to={`/lancamentos/novo?card=${card.id}&date=${addDays(invoice.closing_date, -1)}`}
-          className={`${textButton} inline-flex items-center`}
-        >
-          Registrar compra
-        </Link>
+        {canRegister && (
+          <Link
+            to={`/lancamentos/novo?card=${card.id}&date=${purchaseDate}`}
+            className={`${textButton} inline-flex items-center`}
+          >
+            Registrar compra
+          </Link>
+        )}
         {!charging && (
           <button type="button" onClick={() => setCharging(true)} className={textButton}>
             Registrar encargo
