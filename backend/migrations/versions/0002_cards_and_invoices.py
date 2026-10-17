@@ -257,6 +257,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Só funciona sem dados de cartão: com lançamentos no cartão (sem conta) ou pagamentos de
+    fatura, a volta do CHECK antigo e do `account_id NOT NULL` falha, de propósito, em vez de
+    apagar histórico financeiro. Para voltar, exporte e remova esses lançamentos antes."""
     op.drop_constraint(
         op.f("ck_transactions_remaining_installments_range"), "transactions", type_="check"
     )

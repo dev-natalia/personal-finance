@@ -14,6 +14,7 @@ from app.models import (
     InvoiceItem,
     InvoiceItemKind,
     ItemDirection,
+    ItemStatus,
     Transaction,
     TransactionType,
 )
@@ -21,7 +22,7 @@ from app.services import card_ledger, cards, invoices, transactions
 from app.services.card_ledger import InvoiceState
 from app.services.cards import OpeningState
 from app.services.context import RequestContext
-from app.services.transactions import NewCardExpense
+from app.services.transactions import NewCardExpense, NewRefund
 from tests.support import make_account
 
 TODAY = date(2026, 10, 15)
@@ -276,3 +277,18 @@ def test_credit_reaches_the_open_invoice_even_without_purchases(
     assert db.scalars(select(Invoice).where(Invoice.card_id == card.id)).all() == [
         _invoice(db, card, date(2026, 10, 1))
     ]
+
+
+def test_invoice_lines_keep_refunded_installments_marked(db: Session, ctx: RequestContext) -> None:
+    """A parcela cancelada por estorno continua na lista (riscada na tela), sem contar no total."""
+    card = _card(db, ctx)
+    tx = _buy(db, ctx, card, "600.00", TODAY, installments=3)
+    transactions.create_refund(
+        db, ctx, tx.id, NewRefund(amount=Decimal("200.00"), occurred_on=TODAY)
+    )
+    january = _invoice(db, card, date(2027, 1, 1))
+    lines = card_ledger.invoice_lines(db, january)
+    assert [(line.item.amount, line.item.status) for line in lines] == [
+        (Decimal("200.00"), ItemStatus.CANCELLED)
+    ]
+    assert _by_month(card_ledger.invoice_totals(db, card, TODAY))[date(2027, 1, 1)].total == 0

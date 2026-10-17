@@ -89,6 +89,8 @@ def test_card_purchase_via_transactions_endpoint(auth_client: TestClient) -> Non
         "CREDIT",
         6,
     )
+    # Valor de cada parcela (a sobra dos centavos fica na primeira).
+    assert tx["installment_amount"] == "200.00"
     summary = _summary(auth_client)
     assert summary["open_invoice"]["total"] == "200.00"
     assert [(f["reference_month"], f["total"]) for f in summary["future"]][:2] == [

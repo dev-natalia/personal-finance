@@ -18,7 +18,7 @@ from app.models import (
 from app.services import cards, ledger, transactions
 from app.services.cards import OpeningState
 from app.services.context import RequestContext
-from app.services.transactions import NewCardExpense, NewExpense
+from app.services.transactions import NewCardExpense, NewCharge, NewExpense, NewRefund
 from tests.support import make_account
 
 TODAY = date(2026, 10, 15)
@@ -258,3 +258,31 @@ def test_changing_closing_day_moves_cash_purchases_but_never_into_a_closed_invoi
     # Fechando no dia 12: outubro já fechou em 12/10; a compra de 05/10 não volta para ela.
     cards.update_card(db, ctx, card.id, {"closing_day": 12, "due_day": 19})
     assert _billed(db, older)[0][0] == date(2026, 11, 1)
+
+
+def test_changing_closing_day_also_moves_charges_and_refund_credits(
+    db: Session, ctx: RequestContext, card: Card
+) -> None:
+    """Encargos e créditos de estorno seguem o novo ciclo como as compras à vista."""
+    purchase = transactions.create_transaction(
+        db, ctx, _purchase(card, occurred_on=date(2026, 10, 15))
+    ).transaction
+    charge = transactions.create_transaction(
+        db,
+        ctx,
+        NewCharge(
+            amount=Decimal("15.00"),
+            occurred_on=date(2026, 10, 15),
+            description="IOF",
+            card_id=card.id,
+        ),
+    ).transaction
+    refund = transactions.create_refund(
+        db, ctx, purchase.id, NewRefund(amount=Decimal("10.00"), occurred_on=date(2026, 10, 15))
+    ).transaction
+    assert _billed(db, charge)[0][0] == date(2026, 11, 1)
+    assert _billed(db, refund)[0][0] == date(2026, 11, 1)
+    cards.update_card(db, ctx, card.id, {"closing_day": 20, "due_day": 27})
+    assert _billed(db, purchase)[0][0] == date(2026, 10, 1)
+    assert _billed(db, charge)[0][0] == date(2026, 10, 1)
+    assert _billed(db, refund)[0][0] == date(2026, 10, 1)

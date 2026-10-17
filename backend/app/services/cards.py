@@ -138,8 +138,9 @@ def create_card(
 def _recalculate_cycle(session: Session, ctx: RequestContext, card: Card) -> None:
     """Novos dias de fechamento/vencimento valem para as faturas ainda não fechadas.
 
-    Faturas fechadas e datas editadas à mão não mudam. Compras à vista que passarem a cair em
-    outra fatura são movidas, mas nunca para uma fatura já fechada.
+    Faturas fechadas e datas editadas à mão não mudam. Compras à vista, encargos e créditos de
+    estorno que passarem a cair em outra fatura são movidos (pela data do lançamento), mas nunca
+    para uma fatura já fechada.
     """
     today = ctx.today()
     not_closed = list(
@@ -159,17 +160,20 @@ def _recalculate_cycle(session: Session, ctx: RequestContext, card: Card) -> Non
         record(session, ctx, invoice, AuditAction.UPDATE, before)
 
     earliest_open = card_ledger.open_invoice_month(session, card, today)
-    cash_purchases = session.execute(
+    cash_purchase = (InvoiceItem.kind == InvoiceItemKind.PURCHASE) & (
+        InvoiceItem.installment_number.is_(None)
+    )
+    by_date = InvoiceItem.kind.in_((InvoiceItemKind.CHARGE, InvoiceItemKind.REFUND_CREDIT))
+    movable = session.execute(
         select(InvoiceItem, Transaction.occurred_on)
         .join(Transaction, Transaction.id == InvoiceItem.transaction_id)
         .where(
             InvoiceItem.invoice_id.in_([i.id for i in not_closed]),
-            InvoiceItem.kind == InvoiceItemKind.PURCHASE,
-            InvoiceItem.installment_number.is_(None),
+            cash_purchase | by_date,
             InvoiceItem.status == ItemStatus.ACTIVE,
         )
     ).all()
-    for item, occurred_on in cash_purchases:
+    for item, occurred_on in movable:
         target_month = max(invoices.invoice_month_on(session, card, occurred_on), earliest_open)
         target = invoices.get_or_create_invoice(session, card, target_month)
         if target.id != item.invoice_id:

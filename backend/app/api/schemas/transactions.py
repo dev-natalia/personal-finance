@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Annotated, Literal, Self, assert_never
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from app.api.schemas.common import (
     ApiDate,
@@ -13,6 +13,7 @@ from app.api.schemas.common import (
     NoticeOut,
     PositiveMoney,
 )
+from app.domain.cards import split_installments
 from app.models import PaymentMethod, TransactionSource, TransactionStatus, TransactionType
 from app.services.transactions import (
     NewCardExpense,
@@ -176,6 +177,14 @@ class TransactionOut(BaseModel):
     source: TransactionSource
     created_at: datetime
     voided_at: datetime | None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def installment_amount(self) -> Money | None:
+        """Valor de cada parcela (as demais; a primeira leva a sobra dos centavos)."""
+        if self.installments is None:
+            return None
+        return split_installments(self.amount, self.installments)[-1]
 
 
 class TransactionWriteOut(BaseModel):

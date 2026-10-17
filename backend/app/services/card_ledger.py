@@ -365,7 +365,11 @@ def _line_description(item: InvoiceItem, tx_description: str | None, source: dat
 
 
 def invoice_lines(session: Session, invoice: Invoice) -> list[InvoiceLine]:
-    """Itens ativos da fatura, com o texto que a tela mostra, em ordem de data."""
+    """Itens da fatura, com o texto que a tela mostra, em ordem de data.
+
+    Além dos ativos, as parcelas canceladas por estorno (a tela as mostra riscadas, como
+    "estornada"); itens de lançamentos anulados somem.
+    """
     source = aliased(Invoice)
     rows = session.execute(
         select(
@@ -373,7 +377,10 @@ def invoice_lines(session: Session, invoice: Invoice) -> list[InvoiceLine]:
         )
         .outerjoin(Transaction, Transaction.id == InvoiceItem.transaction_id)
         .outerjoin(source, source.id == InvoiceItem.source_invoice_id)
-        .where(InvoiceItem.invoice_id == invoice.id, InvoiceItem.status == ItemStatus.ACTIVE)
+        .where(
+            InvoiceItem.invoice_id == invoice.id,
+            (InvoiceItem.status == ItemStatus.ACTIVE) | InvoiceItem.cancelled_by_id.is_not(None),
+        )
         .order_by(Transaction.occurred_on.asc().nulls_first(), InvoiceItem.id)
     ).all()
     return [
