@@ -318,6 +318,9 @@ class TransactionFilters:
     category_id: UUID | None = None
     merchant_id: UUID | None = None
     payment_method: PaymentMethod | None = None
+    # Lugar sem estabelecimento: descrição em minúsculas, sem espaços nas pontas.
+    description_key: str | None = None
+    types: tuple[TransactionType, ...] | None = None
     type: TransactionType | None = None
     status: TransactionStatus | None = TransactionStatus.CONFIRMED  # None = todos
 
@@ -373,6 +376,13 @@ def list_transactions(
         stmt = stmt.where(Transaction.payment_method == filters.payment_method)
     if filters.type is not None:
         stmt = stmt.where(Transaction.type == filters.type)
+    if filters.types is not None:
+        stmt = stmt.where(Transaction.type.in_(filters.types))
+    if filters.description_key is not None:
+        stmt = stmt.where(
+            Transaction.merchant_id.is_(None),
+            func.lower(func.trim(Transaction.description)) == filters.description_key,
+        )
     if filters.status is not None:
         stmt = stmt.where(Transaction.status == filters.status)
     if cursor is not None:

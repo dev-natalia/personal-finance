@@ -3,17 +3,21 @@
 Tudo sai de `ledger.spending_rows` (a única definição de consumo); aqui só se agrupa.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Date, Subquery, cast, func, select
+from sqlalchemy import Date, Subquery, and_, cast, func, select
 from sqlalchemy.orm import Session
 
+from app.domain.errors import NotFound
 from app.domain.money import quantize
-from app.domain.periods import Period, PeriodKind
-from app.models import Category
+from app.domain.periods import Period, PeriodKind, period_containing
+from app.models import Category, Merchant, Transaction, TransactionStatus, TransactionType
+from app.repositories import get_owned
+from app.services import ledger
 from app.services.ledger import Source, SpendingMode, spending_rows
 
 ZERO = Decimal("0.00")
@@ -154,3 +158,166 @@ def summary(
         by_day=by_day,
         busiest=max(by_day, key=lambda d: d.amount, default=None),
     )
+
+
+# --- dia e lugar ------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class DaySpending:
+    transaction: Transaction
+    amount: Decimal  # o que conta no dia (a parcela, no modo parcelas)
+
+
+def day_spending(
+    session: Session,
+    user_id: UUID,
+    day: date,
+    *,
+    mode: SpendingMode,
+    source: Source | None,
+    category_id: UUID | None,
+) -> list[DaySpending]:
+    """O que foi gasto num dia, do maior para o menor."""
+    rows = spending_rows(user_id, day, day, mode=mode, source=source, category_id=category_id)
+    result = session.execute(
+        select(Transaction, rows.c.amount)
+        .join(rows, rows.c.transaction_id == Transaction.id)
+        .order_by(rows.c.amount.desc(), Transaction.id)
+    ).all()
+    return [DaySpending(tx, quantize(amount)) for tx, amount in result]
+
+
+@dataclass(frozen=True)
+class PlaceTotals:
+    amount: Decimal
+    purchases: int
+
+
+@dataclass(frozen=True)
+class PlaceDetail:
+    key: str
+    name: str
+    category_name: str | None
+    week: PlaceTotals
+    month: PlaceTotals
+    year: PlaceTotals
+    average: Decimal | None
+
+
+def _place_filter(session: Session, user_id: UUID, key: str) -> Any:
+    """Condição sobre `Transaction` para a chave do lugar; chave inválida ou de outra pessoa
+    não existe para quem pergunta."""
+    kind, _, value = key.partition(":")
+    if kind == "m":
+        try:
+            merchant_id = UUID(value)
+        except ValueError as exc:
+            raise NotFound("o lugar") from exc
+        get_owned(session, Merchant, merchant_id, user_id, "o lugar")
+        return Transaction.merchant_id == merchant_id
+    if kind == "d" and value:
+        return and_(
+            Transaction.merchant_id.is_(None),
+            func.lower(func.trim(Transaction.description)) == value,
+        )
+    raise NotFound("o lugar")
+
+
+def _place_totals(
+    session: Session,
+    user_id: UUID,
+    key: str,
+    period: Period,
+    mode: SpendingMode,
+    source: Source | None,
+) -> PlaceTotals:
+    rows = spending_rows(user_id, period.start, period.end, mode=mode, source=source)
+    amount, purchases = session.execute(
+        select(
+            func.coalesce(func.sum(rows.c.amount), 0),
+            func.count().filter(rows.c.counts_as_purchase),
+        ).where(rows.c.place_key == key)
+    ).one()
+    return PlaceTotals(quantize(Decimal(amount)), purchases)
+
+
+def place_detail(
+    session: Session,
+    user_id: UUID,
+    key: str,
+    *,
+    mode: SpendingMode,
+    source: Source | None,
+    today: date,
+) -> PlaceDetail:
+    """Semana, mês e ano atuais de um lugar, e a média por compra (valor registrado, no ano)."""
+    condition = _place_filter(session, user_id, key)
+    spent = (
+        Transaction.user_id == user_id,
+        Transaction.status == TransactionStatus.CONFIRMED,
+        Transaction.type.in_([TransactionType.EXPENSE, TransactionType.CHARGE]),
+        condition,
+    )
+    latest = session.execute(
+        select(Merchant.name, Transaction.description)
+        .outerjoin(Merchant, Merchant.id == Transaction.merchant_id)
+        .where(*spent)
+        .order_by(Transaction.occurred_on.desc(), Transaction.id.desc())
+        .limit(1)
+    ).first()
+    if latest is None:
+        raise NotFound("o lugar")
+    year = period_containing(PeriodKind.YEAR, today, today)
+    category = session.scalar(
+        select(Category.name)
+        .join(Transaction, Transaction.category_id == Category.id)
+        .where(*spent, Transaction.occurred_on.between(year.start, year.end))
+        .group_by(Category.name)
+        .order_by(func.count().desc(), func.sum(Transaction.amount).desc())
+        .limit(1)
+    )
+    average = session.scalar(
+        select(func.avg(Transaction.amount)).where(
+            *spent, Transaction.occurred_on.between(year.start, year.end)
+        )
+    )
+    periods = {
+        kind: period_containing(kind, today, today)
+        for kind in (PeriodKind.WEEK, PeriodKind.MONTH, PeriodKind.YEAR)
+    }
+    return PlaceDetail(
+        key=key,
+        name=latest[0] or latest[1],
+        category_name=category,
+        week=_place_totals(session, user_id, key, periods[PeriodKind.WEEK], mode, source),
+        month=_place_totals(session, user_id, key, periods[PeriodKind.MONTH], mode, source),
+        year=_place_totals(session, user_id, key, periods[PeriodKind.YEAR], mode, source),
+        average=None if average is None else quantize(Decimal(average)),
+    )
+
+
+def place_transactions(
+    session: Session,
+    user_id: UUID,
+    key: str,
+    *,
+    source: Source | None,
+    cursor: str | None,
+    limit: int = 50,
+) -> ledger.Page:
+    """Compras, encargos e estornos confirmados do lugar, do mais recente ao mais antigo."""
+    kind, _, value = key.partition(":")
+    filters = ledger.TransactionFilters(
+        types=(TransactionType.EXPENSE, TransactionType.CHARGE, TransactionType.REFUND),
+        account_id=source.id if source and source.kind == "account" else None,
+        card_id=source.id if source and source.kind == "card" else None,
+    )
+    if kind == "m":
+        _place_filter(session, user_id, key)
+        filters = replace(filters, merchant_id=UUID(value))
+    elif kind == "d" and value:
+        filters = replace(filters, description_key=value)
+    else:
+        raise NotFound("o lugar")
+    return ledger.list_transactions(session, user_id, filters, cursor=cursor, limit=limit)
