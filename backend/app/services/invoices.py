@@ -34,6 +34,27 @@ from app.services.audit import record, snapshot
 from app.services.context import RequestContext
 
 
+def invoice_month_on(session: Session, card: Card, day: date) -> date:
+    """Mês da fatura que recebe algo lançado em `day`: a primeira que fecha depois dele (A6).
+
+    Respeita as datas editadas à mão (A7): se o banco adiou ou antecipou um fechamento, vale a
+    data guardada na fatura; sem fatura gravada, vale o ciclo do cartão.
+    """
+    computed = invoice_month_for(day, card.closing_day, card.due_day)
+    candidates = [add_months(computed, k) for k in (-1, 0, 1, 2)]
+    rows = session.execute(
+        select(Invoice.reference_month, Invoice.closing_date).where(
+            Invoice.card_id == card.id, Invoice.reference_month.in_(candidates)
+        )
+    )
+    stored = {month: closing for month, closing in rows}
+    for month in candidates:
+        closing = stored.get(month) or invoice_dates(month, card.closing_day, card.due_day)[0]
+        if closing > day:
+            return month
+    return add_months(computed, 3)
+
+
 def get_or_create_invoice(session: Session, card: Card, reference_month: date) -> Invoice:
     """A fatura do mês, criada com as datas do ciclo do cartão se ainda não existe.
 
@@ -91,7 +112,7 @@ def bill_purchase(
     session: Session, ctx: RequestContext, tx: Transaction, card: Card
 ) -> list[InvoiceItem]:
     """Lança a compra nas faturas: um item à vista, ou uma parcela por fatura (A6, A10, A3)."""
-    first_month = invoice_month_for(tx.occurred_on, card.closing_day, card.due_day)
+    first_month = invoice_month_on(session, card, tx.occurred_on)
     if tx.installments is None:
         invoice = get_or_create_invoice(session, card, first_month)
         item = add_item(
@@ -112,7 +133,7 @@ def bill_purchase(
         # Parcelada em andamento: só as que faltam, a partir da fatura seguinte à aberta no
         # início do cartão (a parcela daquele mês já está no total informado da fatura).
         numbers = range(count - tx.remaining_installments + 1, count + 1)
-        opening_month = invoice_month_for(card.opening_date, card.closing_day, card.due_day)
+        opening_month = invoice_month_on(session, card, card.opening_date)
         # A parcela `numbers[0]` cai na fatura seguinte à do início; a parcela k fica em
         # first_month + (k − 1), então first_month recua o que for preciso.
         first_month = add_months(opening_month, 1 - (numbers[0] - 1))
@@ -138,7 +159,7 @@ def bill_purchase(
 
 def bill_charge(session: Session, ctx: RequestContext, tx: Transaction, card: Card) -> InvoiceItem:
     """Encargo (juros, multa, IOF) na fatura da data em que foi cobrado."""
-    month = invoice_month_for(tx.occurred_on, card.closing_day, card.due_day)
+    month = invoice_month_on(session, card, tx.occurred_on)
     return add_item(
         session,
         ctx,
@@ -229,7 +250,7 @@ def apply_card_refund(
             _set_status(session, ctx, item, ItemStatus.CANCELLED, cancelled_by_id=refund.id)
             remaining -= item.amount
     if remaining > 0:
-        month = invoice_month_for(today, card.closing_day, card.due_day)
+        month = invoice_month_on(session, card, today)
         add_item(
             session,
             ctx,

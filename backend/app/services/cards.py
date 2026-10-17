@@ -10,7 +10,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.domain.cards import add_months, invoice_dates, invoice_month_for
+from app.domain.cards import add_months, invoice_dates
 from app.domain.errors import Conflict, Notice, RuleViolation
 from app.domain.money import format_brl, quantize
 from app.models import (
@@ -47,9 +47,9 @@ class CardArchiveResult:
     notices: list[Notice] = field(default_factory=list)
 
 
-def opening_invoice_month(card: Card) -> date:
+def opening_invoice_month(session: Session, card: Card) -> date:
     """Mês da fatura aberta no início do cartão (a que contém `opening_date`)."""
-    return invoice_month_for(card.opening_date, card.closing_day, card.due_day)
+    return invoices.invoice_month_on(session, card, card.opening_date)
 
 
 def list_cards(
@@ -115,7 +115,7 @@ def create_card(
     if opening is None:
         return card
 
-    open_month = opening_invoice_month(card)
+    open_month = opening_invoice_month(session, card)
     if opening.open_invoice_total is not None:
         opened = invoices.get_or_create_invoice(session, card, open_month)
         _opening_item(session, ctx, opened, opening.open_invoice_total)
@@ -156,7 +156,7 @@ def _recalculate_cycle(session: Session, ctx: RequestContext, card: Card) -> Non
         )
         record(session, ctx, invoice, AuditAction.UPDATE, before)
 
-    earliest_open = card_ledger.open_invoice_month(card, today)
+    earliest_open = card_ledger.open_invoice_month(session, card, today)
     cash_purchases = session.execute(
         select(InvoiceItem, Transaction.occurred_on)
         .join(Transaction, Transaction.id == InvoiceItem.transaction_id)
@@ -168,9 +168,7 @@ def _recalculate_cycle(session: Session, ctx: RequestContext, card: Card) -> Non
         )
     ).all()
     for item, occurred_on in cash_purchases:
-        target_month = max(
-            invoice_month_for(occurred_on, card.closing_day, card.due_day), earliest_open
-        )
+        target_month = max(invoices.invoice_month_on(session, card, occurred_on), earliest_open)
         target = invoices.get_or_create_invoice(session, card, target_month)
         if target.id != item.invoice_id:
             before = snapshot(item)

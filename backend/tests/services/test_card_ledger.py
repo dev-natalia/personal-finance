@@ -11,6 +11,7 @@ from app.models import (
     Account,
     Card,
     Invoice,
+    InvoiceItem,
     InvoiceItemKind,
     ItemDirection,
     Transaction,
@@ -215,3 +216,38 @@ def test_purchase_over_limit_returns_a_notice(
     assert [n.code for n in result.notices] == codes
     if codes:
         assert result.notices[0].detail == "O limite do cartão Nubank ficou negativo em R$ 200,00."
+
+
+def _edit_dates(
+    db: Session, ctx: RequestContext, card: Card, month: date, closing: date, due: date
+) -> None:
+    invoice = invoices.get_or_create_invoice(db, card, month)
+    invoices.update_invoice(db, ctx, invoice.id, {"closing_date": closing, "due_date": due})
+
+
+def test_purchase_follows_an_edited_later_closing(db: Session, ctx: RequestContext) -> None:
+    """O banco adiou o fechamento de outubro para o dia 20: a compra do dia 15 ainda é dela."""
+    card = _card(db, ctx)
+    october = date(2026, 10, 1)
+    _edit_dates(db, ctx, card, october, date(2026, 10, 20), date(2026, 10, 27))
+    tx = _buy(db, ctx, card, "100.00", TODAY)
+    item = db.scalars(select(InvoiceItem).where(InvoiceItem.transaction_id == tx.id)).one()
+    assert item.invoice_id == _invoice(db, card, october).id
+    assert card_ledger.open_invoice_month(db, card, TODAY) == october
+    assert (
+        _by_month(card_ledger.invoice_totals(db, card, TODAY))[october].state is InvoiceState.OPEN
+    )
+    preview = card_ledger.preview_purchase(
+        db, card, amount=Decimal("10.00"), installments=None, occurred_on=TODAY, today=TODAY
+    )
+    assert preview.invoice.reference_month == october
+
+
+def test_purchase_skips_an_edited_earlier_closing(db: Session, ctx: RequestContext) -> None:
+    """O banco antecipou o fechamento de novembro para 14/10: a compra de 15/10 vai para dezembro."""
+    card = _card(db, ctx)
+    _edit_dates(db, ctx, card, date(2026, 11, 1), date(2026, 10, 14), date(2026, 11, 10))
+    tx = _buy(db, ctx, card, "100.00", TODAY)
+    item = db.scalars(select(InvoiceItem).where(InvoiceItem.transaction_id == tx.id)).one()
+    assert item.invoice_id == _invoice(db, card, date(2026, 12, 1)).id
+    assert card_ledger.open_invoice_month(db, card, TODAY) == date(2026, 12, 1)

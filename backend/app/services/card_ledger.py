@@ -14,7 +14,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, aliased
 
-from app.domain.cards import add_months, invoice_dates, invoice_month_for, split_installments
+from app.domain.cards import add_months, invoice_dates, split_installments
 from app.domain.dates import month_name
 from app.domain.money import quantize
 from app.models import (
@@ -28,6 +28,7 @@ from app.models import (
     TransactionStatus,
     TransactionType,
 )
+from app.services import invoices
 
 ZERO = Decimal("0.00")
 MOVED_KINDS = (InvoiceItemKind.CARRYOVER, InvoiceItemKind.INVOICE_INSTALLMENT)
@@ -169,9 +170,9 @@ class InvoiceTotals:
     state: InvoiceState
 
 
-def open_invoice_month(card: Card, today: date) -> date:
+def open_invoice_month(session: Session, card: Card, today: date) -> date:
     """Mês da fatura aberta hoje (a que recebe uma compra feita hoje)."""
-    return invoice_month_for(today, card.closing_day, card.due_day)
+    return invoices.invoice_month_on(session, card, today)
 
 
 def _state(invoice: Invoice, balance: Decimal, open_month: date, today: date) -> InvoiceState:
@@ -190,7 +191,7 @@ def invoice_totals(session: Session, card: Card, today: date) -> list[InvoiceTot
     sums = _sums(session, [i.id for i in card_invoices])
     debits, credits, payments, moved_out = sums.debits, sums.credits, sums.payments, sums.moved_out
 
-    open_month = open_invoice_month(card, today)
+    open_month = open_invoice_month(session, card, today)
     result: list[InvoiceTotals] = []
     carried = ZERO
     for invoice in card_invoices:
@@ -249,7 +250,7 @@ class CardSummary:
 
 def card_summary(session: Session, card: Card, today: date) -> CardSummary:
     totals = invoice_totals(session, card, today)
-    open_month = open_invoice_month(card, today)
+    open_month = open_invoice_month(session, card, today)
     opened = next((t for t in totals if t.invoice.reference_month == open_month), None)
     closing, due = (
         (opened.invoice.closing_date, opened.invoice.due_date)
@@ -298,7 +299,7 @@ def preview_purchase(
     """Como as faturas e o limite ficariam com a compra. Não grava nada."""
     amount = quantize(amount)
     parts = [amount] if installments is None else split_installments(amount, installments)
-    first = invoice_month_for(occurred_on, card.closing_day, card.due_day)
+    first = invoices.invoice_month_on(session, card, occurred_on)
     current = {t.invoice.reference_month: t.total for t in invoice_totals(session, card, today)}
     impacts = []
     for offset, part in enumerate(parts):
