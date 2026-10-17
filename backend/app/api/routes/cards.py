@@ -24,7 +24,7 @@ from app.api.schemas.common import ApiDate, NoticeOut
 from app.api.schemas.transactions import TransactionOut, TransactionWriteOut
 from app.models import Card
 from app.repositories import get_owned
-from app.services import card_ledger, cards, invoice_payments
+from app.services import card_ledger, cards, invoice_payments, transactions
 from app.services.card_ledger import CardSummary, InvoiceState
 from app.services.cards import OpeningState
 
@@ -180,6 +180,7 @@ def add_charge(
 def preview_purchase(card_id: UUID, body: PreviewIn, ctx: CtxDep, db: DbDep) -> PreviewOut:
     """Como a fatura e o limite ficariam com a compra. Não grava nada."""
     card = cards.get_active_card(db, ctx, card_id)
+    transactions.check_card_dates(card, body.occurred_on, None)
     preview = card_ledger.preview_purchase(
         db,
         card,

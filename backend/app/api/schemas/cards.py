@@ -128,9 +128,17 @@ class InvoiceItemOut(BaseModel):
     status: ItemStatus
 
 
+class InvoiceAdjustmentOut(BaseModel):
+    """Linha sem item próprio: crédito da fatura anterior ou valor levado adiante/parcelado."""
+
+    description: str
+    amount: Money
+
+
 class InvoiceDetailOut(BaseModel):
     invoice: InvoiceSummaryOut
     items: list[InvoiceItemOut]
+    adjustments: list[InvoiceAdjustmentOut]
     payments: list[TransactionOut]
 
 

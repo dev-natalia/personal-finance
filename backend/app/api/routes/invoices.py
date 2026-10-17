@@ -6,6 +6,7 @@ from fastapi import APIRouter, Header, Response
 
 from app.api.deps import CtxDep, DbDep
 from app.api.schemas.cards import (
+    InvoiceAdjustmentOut,
     InvoiceDetailOut,
     InvoiceItemOut,
     InvoicePatch,
@@ -52,6 +53,10 @@ def _detail(db: DbDep, today: date, invoice: Invoice) -> InvoiceDetailOut:
                 status=line.item.status,
             )
             for line in card_ledger.invoice_lines(db, invoice)
+        ],
+        adjustments=[
+            InvoiceAdjustmentOut(description=a.description, amount=a.amount)
+            for a in card_ledger.invoice_adjustments(db, card, totals)
         ],
         payments=[
             TransactionOut.model_validate(p) for p in card_ledger.invoice_payments(db, invoice)

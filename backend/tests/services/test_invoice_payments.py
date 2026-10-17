@@ -12,6 +12,7 @@ from app.models import (
     Invoice,
     InvoiceItem,
     InvoiceItemKind,
+    ItemDirection,
     ItemStatus,
     TransactionStatus,
     TransactionType,
@@ -356,3 +357,53 @@ def test_other_user_cannot_pay_the_invoice(
 
     with pytest.raises(NotFound):
         pay_invoice(db, other_ctx, _invoice(db, card, OCTOBER).id, _pay((itau, "300.00")))
+
+
+def _adjustments(db: Session, card: Card, month: date) -> list[tuple[str, Decimal]]:
+    totals = _totals(db, card, month)
+    return [(a.description, a.amount) for a in card_ledger.invoice_adjustments(db, card, totals)]
+
+
+def test_paid_invoice_explains_the_carried_remainder(
+    db: Session, ctx: RequestContext, card: Card, itau: Account
+) -> None:
+    _buy(db, ctx, card, "300.00", date(2026, 9, 20))
+    pay_invoice(
+        db, ctx, _invoice(db, card, OCTOBER).id, _pay((itau, "120.00"), remainder="CARRY_OVER")
+    )
+    assert _adjustments(db, card, OCTOBER) == [
+        ("Levado para a fatura de novembro", Decimal("180.00"))
+    ]
+
+
+def test_paid_invoice_explains_the_installment_plan(
+    db: Session, ctx: RequestContext, card: Card, itau: Account
+) -> None:
+    _buy(db, ctx, card, "300.00", date(2026, 9, 20))
+    pay_invoice(
+        db,
+        ctx,
+        _invoice(db, card, OCTOBER).id,
+        _pay((itau, "120.00"), remainder=InstallmentPlan(3, Decimal("65.00"))),
+    )
+    # Sai de outubro o restante (180), não as parcelas com juros (195).
+    assert _adjustments(db, card, OCTOBER) == [("Parcelado em 3x com o Nubank", Decimal("180.00"))]
+
+
+def test_invoice_explains_the_credit_from_the_previous_one(
+    db: Session, ctx: RequestContext, card: Card
+) -> None:
+    _buy(db, ctx, card, "100.00", date(2026, 9, 20))
+    _buy(db, ctx, card, "38.00", TODAY)
+    invoices.add_item(
+        db,
+        ctx,
+        _invoice(db, card, OCTOBER),
+        kind=InvoiceItemKind.REFUND_CREDIT,
+        direction=ItemDirection.CREDIT,
+        amount=Decimal("150.00"),
+    )
+    assert _adjustments(db, card, date(2026, 11, 1)) == [
+        ("Crédito da fatura de outubro", Decimal("50.00"))
+    ]
+    assert _adjustments(db, card, OCTOBER) == []

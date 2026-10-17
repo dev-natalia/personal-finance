@@ -181,6 +181,21 @@ def _state(invoice: Invoice, balance: Decimal, open_month: date, today: date) ->
     return InvoiceState.CLOSED if balance > 0 else InvoiceState.PAID
 
 
+def _unsaved_invoice(card: Card, month: date) -> Invoice:
+    """Fatura de um mês ainda sem nada gravado, só para receber um crédito (não vai ao banco)."""
+    closing, due = invoice_dates(month, card.closing_day, card.due_day)
+    return Invoice(
+        id=None,
+        user_id=card.user_id,
+        card_id=card.id,
+        reference_month=month,
+        closing_date=closing,
+        due_date=due,
+        reported_total=None,
+        dates_edited=False,
+    )
+
+
 def invoice_totals(session: Session, card: Card, today: date) -> list[InvoiceTotals]:
     """Todas as faturas do cartão, em ordem de mês, com somas e estado.
 
@@ -194,7 +209,16 @@ def invoice_totals(session: Session, card: Card, today: date) -> list[InvoiceTot
     open_month = open_invoice_month(session, card, today)
     result: list[InvoiceTotals] = []
     carried = ZERO
-    for invoice in card_invoices:
+    # Mês a mês: um mês sem fatura gravada só entra se houver crédito a levar para ele, para o
+    # crédito não pular meses nem sumir antes da fatura aberta.
+    by_month = {i.reference_month: i for i in card_invoices}
+    month = min(by_month, default=open_month)
+    last = max([*by_month, open_month])
+    while by_month and month <= last:
+        invoice = by_month.get(month) or (_unsaved_invoice(card, month) if carried > 0 else None)
+        month = add_months(month, 1)
+        if invoice is None:
+            continue
         total = debits[invoice.id] - credits[invoice.id] - carried
         balance = total - payments[invoice.id] - moved_out[invoice.id]
         from_previous, carried = carried, ZERO
@@ -371,3 +395,63 @@ def invoice_payments(session: Session, invoice: Invoice) -> list[Transaction]:
             .order_by(Transaction.occurred_on, Transaction.id)
         )
     )
+
+
+@dataclass(frozen=True)
+class InvoiceAdjustment:
+    """O que mudou o saldo da fatura sem ser item dela nem pagamento."""
+
+    description: str
+    amount: Decimal
+
+
+def invoice_adjustments(
+    session: Session, card: Card, totals: InvoiceTotals
+) -> list[InvoiceAdjustment]:
+    """Crédito herdado da fatura anterior e o que saiu desta (levado adiante ou parcelado).
+
+    Sem estas linhas, uma fatura "paga" com pagamento menor que o total não fecha na conta.
+    """
+    invoice = totals.invoice
+    result: list[InvoiceAdjustment] = []
+    if totals.credit_from_previous > 0:
+        previous = month_name(add_months(invoice.reference_month, -1))
+        result.append(
+            InvoiceAdjustment(f"Crédito da fatura de {previous}", totals.credit_from_previous)
+        )
+    target = aliased(Invoice)
+    first_month = func.min(target.reference_month)
+    rows = session.execute(
+        select(
+            InvoiceItem.kind,
+            InvoiceItem.payment_group_id,
+            first_month,
+            func.max(InvoiceItem.installment_count),
+            func.sum(InvoiceItem.amount),
+        )
+        .join(target, target.id == InvoiceItem.invoice_id)
+        .where(
+            InvoiceItem.source_invoice_id == invoice.id,
+            InvoiceItem.status == ItemStatus.ACTIVE,
+            InvoiceItem.kind.in_(MOVED_KINDS),
+        )
+        .group_by(InvoiceItem.kind, InvoiceItem.payment_group_id)
+        .order_by(first_month)
+    ).all()
+    for kind, group_id, month, count, amount in rows:
+        if kind is InvoiceItemKind.CARRYOVER:
+            description = f"Levado para a fatura de {month_name(month)}"
+        else:
+            # As parcelas incluem os juros (o encargo do mesmo pagamento); da fatura saiu só o
+            # restante.
+            interest = session.scalar(
+                select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+                    Transaction.payment_group_id == group_id,
+                    Transaction.type == TransactionType.CHARGE,
+                    Transaction.status == TransactionStatus.CONFIRMED,
+                )
+            )
+            amount = Decimal(amount) - Decimal(interest or 0)
+            description = f"Parcelado em {count}x com o {card.name}"
+        result.append(InvoiceAdjustment(description, quantize(Decimal(amount))))
+    return result

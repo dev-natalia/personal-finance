@@ -182,6 +182,10 @@ def test_invoice_detail_lists_items_with_labels(
     october = auth_client.get(f"/api/v1/invoices/{setup['october']}").json()
     assert [p["amount"] for p in october["payments"]] == ["120.00"]
     assert october["invoice"]["state"] == "PAID"
+    assert october["adjustments"] == [
+        {"description": "Levado para a fatura de novembro", "amount": "180.00"}
+    ]
+    assert detail["adjustments"] == []
 
 
 def test_card_invoices_lists_open_future_and_previous(
