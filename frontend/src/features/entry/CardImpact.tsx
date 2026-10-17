@@ -1,3 +1,4 @@
+import { ApiError } from '../../api/client'
 import { usePurchasePreview } from '../../api/queries'
 import type { PreviewIn } from '../../api/types'
 import { monthName } from '../../domain/dates'
@@ -20,9 +21,12 @@ export function CardImpact({ input }: Props) {
   const preview = usePurchasePreview(input)
   if (input === null) return null
   if (preview.isError) {
-    return (
-      <p className="mt-3 text-sm text-ink-soft">Não foi possível calcular o impacto na fatura.</p>
-    )
+    // Recusa do backend (ex.: data antes do início do cartão): o motivo, não um erro genérico.
+    const reason =
+      preview.error instanceof ApiError && preview.error.status < 500
+        ? preview.error.detail
+        : 'Não foi possível calcular o impacto na fatura.'
+    return <p className="mt-3 text-sm text-stamp">{reason}</p>
   }
   if (!preview.data) return <p className="mt-3 text-sm text-ink-soft">Calculando…</p>
 

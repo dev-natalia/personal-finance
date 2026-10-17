@@ -24,6 +24,7 @@ import {
 import { ChargeForm } from './ChargeForm'
 import { InvoiceDetails } from './InvoiceDetails'
 import { InvoicePaymentForm } from './InvoicePaymentForm'
+import { OpeningSection } from './OpeningSection'
 import { DaySelect } from './NewCardForm'
 
 const textButton = 'min-h-11 px-2 text-sm text-pen underline-offset-2 hover:underline'
@@ -74,6 +75,10 @@ export function CardPage() {
       {status}
       <OpenInvoice open={open} limit={limit} />
       {payable && <PayButton card={card} invoice={payable} onMessage={announce} />}
+      {!payable && open.id !== null && isPositive(open.balance) && (
+        // Pagar antes do fechamento libera limite (adiantamento).
+        <PayButton card={card} invoice={open} advance onMessage={announce} />
+      )}
       {payable && <PayableInvoice card={card} invoice={payable} onMessage={announce} />}
 
       <div className="mt-6 border-t border-rule">
@@ -97,6 +102,9 @@ export function CardPage() {
             <InvoiceDetails invoiceId={open.id} onMessage={announce} />
           )}
         </Collapsible>
+        <Collapsible title="Início do cartão" lazy>
+          <OpeningSection summary={current} onMessage={announce} />
+        </Collapsible>
         <Collapsible title="Faturas anteriores" lazy>
           <PreviousInvoices cardId={card.id} onMessage={announce} />
         </Collapsible>
@@ -118,6 +126,10 @@ function OpenInvoice({
     <section aria-label="Fatura aberta e limite" className={slipClass}>
       <p className="text-ink-soft">{invoiceTitle(open)}</p>
       <p className="tabular text-3xl font-[650]">{formatBRL(open.total)}</p>
+      {/* Depois de um adiantamento o saldo é menor que o total (os dois vêm do backend). */}
+      {open.balance !== open.total && (
+        <p className="tabular font-semibold">Falta pagar {formatBRLNoBreak(open.balance)}</p>
+      )}
       <p className="mb-4 text-sm text-ink-soft">
         Fecha em {shortDate(open.closing_date)}, vence em {shortDate(open.due_date)}
       </p>
@@ -140,21 +152,25 @@ function OpenInvoice({
 function PayButton({
   card,
   invoice,
+  advance = false,
   onMessage,
 }: {
   card: CardOut
   invoice: InvoiceSummaryOut
+  /** Fatura ainda aberta: pagamento adiantado, botão secundário. */
+  advance?: boolean
   onMessage: Announce
 }) {
   const paying = useInPlace()
-  const label = `Pagar fatura de ${monthName(invoice.reference_month)}`
+  const month = monthName(invoice.reference_month)
+  const label = advance ? `Adiantar pagamento da fatura de ${month}` : `Pagar fatura de ${month}`
   if (!paying.open) {
     return (
       <button
         ref={paying.buttonRef}
         type="button"
         onClick={paying.show}
-        className={`${primaryButtonClass} mt-4`}
+        className={`${advance ? secondaryButtonClass : primaryButtonClass} mt-4`}
       >
         {label}
       </button>

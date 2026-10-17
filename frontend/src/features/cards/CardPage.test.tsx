@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { HttpResponse, http } from 'msw'
 import { Route, Routes, useLocation } from 'react-router'
@@ -29,6 +29,7 @@ const OCTOBER_DETAIL: InvoiceDetailOut = {
       status: 'ACTIVE',
     },
   ],
+  adjustments: [],
   payments: [
     transaction({
       id: 'tx-pagamento',
@@ -341,4 +342,96 @@ test('keyboard focus in previous invoice actions', async () => {
   expect(screen.getByLabelText('Fechamento')).toHaveFocus()
   await user.click(screen.getByRole('button', { name: 'Cancelar' }))
   expect(screen.getByRole('button', { name: 'Editar datas' })).toHaveFocus()
+})
+
+test('open invoice can be paid in advance', async () => {
+  mockApi({ ...NUBANK, payable: null })
+  server.use(
+    http.get('/api/v1/accounts', () => HttpResponse.json([])),
+  )
+  const { user } = renderPage()
+  await user.click(await screen.findByRole('button', { name: 'Adiantar pagamento da fatura de novembro' }))
+  const form = screen.getByRole('form', { name: 'Pagar fatura de novembro' })
+  expect(within(form).getByText('Total R$ 1.240,00')).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Pagar fatura de novembro' })).toHaveFocus()
+})
+
+test('previous invoice explains what was carried or put in installments', async () => {
+  mockApi()
+  server.use(
+    http.get('/api/v1/invoices/:id', () =>
+      HttpResponse.json({
+        ...OCTOBER_DETAIL,
+        adjustments: [{ description: 'Parcelado em 6x com o Nubank', amount: '1300.00' }],
+        items: [
+          ...OCTOBER_DETAIL.items,
+          { ...OCTOBER_DETAIL.items[0]!, id: 'item-2', installment_number: 6, status: 'CANCELLED' },
+        ],
+      }),
+    ),
+  )
+  const { user } = renderPage()
+  await user.click(await screen.findByText('Faturas anteriores'))
+  await user.click(await screen.findByText('Fatura de outubro, paga'))
+  expect(await screen.findByText('Parcelado em 6x com o Nubank')).toBeInTheDocument()
+  expect(screen.getByText('−R$ 1.300,00')).toBeInTheDocument()
+  expect(screen.getByText('estornada')).toBeInTheDocument()
+})
+
+test('opening state can be completed later from the card page', async () => {
+  const captured = mockApi()
+  const sent: { key: string | null; body: unknown }[] = []
+  const totals: unknown[] = []
+  server.use(
+    http.get('/api/v1/cards/cycle', () =>
+      HttpResponse.json({
+        open_reference_month: '2026-10-01',
+        open_closing_date: '2026-10-03',
+        open_due_date: '2026-10-10',
+        next_reference_month: '2026-11-01',
+      }),
+    ),
+    http.post('/api/v1/transactions', async ({ request }) => {
+      sent.push({ key: request.headers.get('Idempotency-Key'), body: await request.json() })
+      return HttpResponse.json(
+        { transaction: transaction(), replayed: false, warnings: [] },
+        { status: 201 },
+      )
+    }),
+    http.put('/api/v1/cards/:id/opening-total', async ({ request }) => {
+      totals.push(await request.json())
+      return HttpResponse.json(NUBANK)
+    }),
+  )
+  void captured
+  const { user } = renderPage()
+  await user.click(await screen.findByText('Início do cartão'))
+  const line = await screen.findByRole('form', { name: 'Adicionar parcelada em andamento' })
+  await user.type(within(line).getByLabelText('Descrição'), 'notebook')
+  await user.type(within(line).getByLabelText('Valor total'), '6.000')
+  await user.selectOptions(within(line).getByLabelText('Parcelas'), '10')
+  fireEvent.change(within(line).getByLabelText('Data da compra'), { target: { value: '2026-07-20' } })
+  await user.selectOptions(
+    within(line).getByLabelText('Quantas faltam depois da fatura de outubro'),
+    '5',
+  )
+  await user.click(within(line).getByRole('button', { name: 'Adicionar parcelada' }))
+  await waitFor(() => expect(sent).toHaveLength(1))
+  expect(sent[0]!.body).toEqual({
+    type: 'EXPENSE',
+    amount: '6000.00',
+    occurred_on: '2026-07-20',
+    description: 'notebook',
+    card_id: 'card-nubank',
+    installments: 10,
+    remaining_installments: 5,
+  })
+  expect(sent[0]!.key).toMatch(/^[0-9a-f-]{36}$/)
+  expect(await screen.findByRole('status')).toHaveTextContent('Parcelada notebook adicionada.')
+})
+
+test('advance payment shows what is left on the open invoice', async () => {
+  mockApi({ ...NUBANK, open_invoice: { ...NUBANK.open_invoice, balance: '740.00' } })
+  renderPage()
+  expect(await screen.findByText('Falta pagar R$ 740,00')).toBeInTheDocument()
 })

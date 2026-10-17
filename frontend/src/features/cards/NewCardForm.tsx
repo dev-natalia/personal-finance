@@ -2,8 +2,9 @@ import { type FormEvent, useId, useState } from 'react'
 
 import { ApiError, newIdempotencyKey } from '../../api/client'
 import { api } from '../../api/endpoints'
-import { useEntryHints, useInvalidateLedger } from '../../api/queries'
-import type { CardIn, ExpenseIn } from '../../api/types'
+import { useCardCycle, useEntryHints, useInvalidateLedger } from '../../api/queries'
+import type { CardIn, CycleOut, ExpenseIn } from '../../api/types'
+import { addDays, monthName } from '../../domain/dates'
 import { isPositive, tryParseMoney } from '../../domain/money'
 import { Field, invalid } from '../../ui/Field'
 import { useFocusOnMount } from '../../ui/focus'
@@ -21,7 +22,7 @@ const INSTALLMENTS = Array.from({ length: 23 }, (_, k) => k + 2)
 const textButton = 'min-h-11 px-2 text-sm text-pen underline-offset-2 hover:underline'
 
 /** Parcelada que já corria antes do início do cartão (só as parcelas que faltam são lançadas). */
-interface Line {
+export interface Line {
   id: string
   description: string
   amount: string
@@ -34,7 +35,7 @@ interface Line {
   sentBody: string | null
 }
 
-function newLine(): Line {
+export function newLine(): Line {
   return {
     id: newIdempotencyKey(),
     description: '',
@@ -54,7 +55,7 @@ function messageOf(error: unknown): string {
 }
 
 /** Corpo da compra em andamento, ou nulo se a linha está incompleta. */
-function lineBody(line: Line, cardId: string): ExpenseIn | null {
+export function lineBody(line: Line, cardId: string): ExpenseIn | null {
   const amount = tryParseMoney(line.amount)
   const count = Number(line.installments)
   const remaining = Number(line.remaining)
@@ -109,6 +110,15 @@ export function NewCardForm({ onCreated, onCancel }: Props) {
   const [busy, setBusy] = useState(false)
   // Começa hoje: o total da fatura aberta que o banco mostra hoje já inclui as compras do ciclo.
   const opening = openingDate ?? hints.data?.today ?? ''
+  // Qual fatura está aberta no início: os rótulos dizem o mês, para ninguém contar as parcelas a
+  // partir da fatura fechada (a parcela deste mês já está no total da aberta).
+  const cycle = useCardCycle(
+    closingDay && dueDay && opening
+      ? { closingDay: Number(closingDay), dueDay: Number(dueDay), openingDate: opening }
+      : null,
+  ).data
+  const openMonth = cycle ? monthName(cycle.open_reference_month) : null
+  const closedMonth = cycle ? monthName(addDays(cycle.open_reference_month, -1)) : null
 
   const editLine = (lineId: string, patch: Partial<Line>) =>
     setLines((all) => all.map((l) => (l.id === lineId ? { ...l, ...patch, error: null } : l)))
@@ -256,7 +266,7 @@ export function NewCardForm({ onCreated, onCancel }: Props) {
         </p>
         <MoneyInput
           id={`${id}-open-total`}
-          label="Total da fatura aberta agora"
+          label={openMonth ? `Total da fatura de ${openMonth} (aberta agora)` : 'Total da fatura aberta agora'}
           value={openTotal}
           onChange={setOpenTotal}
           error={errors.open_invoice_total}
@@ -274,7 +284,7 @@ export function NewCardForm({ onCreated, onCancel }: Props) {
           <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
             <MoneyInput
               id={`${id}-closed-total`}
-              label="Total da fatura fechada"
+              label={closedMonth ? `Total da fatura de ${closedMonth} (fechada)` : 'Total da fatura fechada'}
               value={closedTotal}
               onChange={setClosedTotal}
               error={errors.closed_total}
@@ -300,6 +310,7 @@ export function NewCardForm({ onCreated, onCancel }: Props) {
             line={line}
             number={index + 1}
             error={line.error ?? errors[`line-${line.id}`] ?? null}
+            cycle={cycle ?? null}
             onEdit={(patch) => editLine(line.id, patch)}
             onRemove={() => setLines((all) => all.filter((l) => l.id !== line.id))}
           />
@@ -374,17 +385,17 @@ function InstallmentLine({
   line,
   number,
   error,
+  cycle,
   onEdit,
   onRemove,
 }: {
   line: Line
   number: number
   error: string | null
+  cycle: CycleOut | null
   onEdit: (patch: Partial<Line>) => void
   onRemove: () => void
 }) {
-  const id = useId()
-  const count = Number(line.installments)
   return (
     <fieldset disabled={line.saved} className="flex flex-col gap-2 rounded-lg border border-rule p-3">
       <legend className="px-1 text-sm font-semibold">Parcelada {number}</legend>
@@ -392,62 +403,7 @@ function InstallmentLine({
         <p className="text-sm">Registrada.</p>
       ) : (
         <>
-          <Field id={`${id}-description`} label="Descrição">
-            <input
-              id={`${id}-description`}
-              value={line.description}
-              onChange={(e) => onEdit({ description: e.target.value })}
-              className={inputClass}
-            />
-          </Field>
-          <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
-            <MoneyInput
-              id={`${id}-amount`}
-              label="Valor total"
-              value={line.amount}
-              onChange={(value) => onEdit({ amount: value })}
-            />
-            <label className={fieldLabelClass}>
-              Parcelas
-              <select
-                value={line.installments}
-                onChange={(e) => onEdit({ installments: e.target.value, remaining: '' })}
-                className={inputClass}
-              >
-                <option value="">Escolha</option>
-                {INSTALLMENTS.map((n) => (
-                  <option key={n} value={n}>
-                    {n}x
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className={fieldLabelClass}>
-              Data da compra
-              <input
-                type="date"
-                value={line.purchasedOn}
-                onChange={(e) => onEdit({ purchasedOn: e.target.value })}
-                className={inputClass}
-              />
-            </label>
-            <label className={fieldLabelClass}>
-              Quantas faltam depois da fatura atual
-              <select
-                value={line.remaining}
-                onChange={(e) => onEdit({ remaining: e.target.value })}
-                disabled={!count}
-                className={inputClass}
-              >
-                <option value="">Escolha</option>
-                {Array.from({ length: Math.max(count - 1, 0) }, (_, k) => k + 1).map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+          <InstallmentFields line={line} cycle={cycle} onEdit={onEdit} />
           <button
             type="button"
             onClick={onRemove}
@@ -464,5 +420,86 @@ function InstallmentLine({
         </p>
       )}
     </fieldset>
+  )
+}
+
+/** Campos de uma parcelada em andamento (cadastro do cartão e tela do cartão). */
+export function InstallmentFields({
+  line,
+  cycle,
+  onEdit,
+}: {
+  line: Line
+  /** Fatura aberta no início do cartão; nula enquanto não se sabe (rótulo genérico). */
+  cycle: CycleOut | null
+  onEdit: (patch: Partial<Line>) => void
+}) {
+  const id = useId()
+  const count = Number(line.installments)
+  const openMonth = cycle ? monthName(cycle.open_reference_month) : null
+  return (
+    <>
+      <Field id={`${id}-description`} label="Descrição">
+        <input
+          id={`${id}-description`}
+          value={line.description}
+          onChange={(e) => onEdit({ description: e.target.value })}
+          className={inputClass}
+        />
+      </Field>
+      <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
+        <MoneyInput
+          id={`${id}-amount`}
+          label="Valor total"
+          value={line.amount}
+          onChange={(value) => onEdit({ amount: value })}
+        />
+        <label className={fieldLabelClass}>
+          Parcelas
+          <select
+            value={line.installments}
+            onChange={(e) => onEdit({ installments: e.target.value, remaining: '' })}
+            className={inputClass}
+          >
+            <option value="">Escolha</option>
+            {INSTALLMENTS.map((n) => (
+              <option key={n} value={n}>
+                {n}x
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className={fieldLabelClass}>
+          Data da compra
+          <input
+            type="date"
+            value={line.purchasedOn}
+            onChange={(e) => onEdit({ purchasedOn: e.target.value })}
+            className={inputClass}
+          />
+        </label>
+        <label className={fieldLabelClass}>
+          {openMonth ? `Quantas faltam depois da fatura de ${openMonth}` : 'Quantas faltam depois da fatura atual'}
+          <select
+            value={line.remaining}
+            onChange={(e) => onEdit({ remaining: e.target.value })}
+            disabled={!count}
+            className={inputClass}
+          >
+            <option value="">Escolha</option>
+            {Array.from({ length: Math.max(count - 1, 0) }, (_, k) => k + 1).map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {cycle && (
+        <p className="text-sm text-ink-soft">
+          Entram a partir da fatura de {monthName(cycle.next_reference_month)}.
+        </p>
+      )}
+    </>
   )
 }

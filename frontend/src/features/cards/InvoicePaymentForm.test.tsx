@@ -202,3 +202,21 @@ test('payment form has no accessibility violations', async () => {
   await user.click(screen.getByRole('button', { name: 'Adicionar outra conta' }))
   await expectNoA11yViolations(container)
 })
+
+test('interest above the remainder needs a confirmation', async () => {
+  const sent = mockApi()
+  const { user } = renderForm()
+  await payPart(user, '1.300')
+  await user.click(screen.getByLabelText('Parcelar com o Nubank'))
+  await user.selectOptions(screen.getByLabelText('Parcelas'), '24')
+  await user.type(screen.getByLabelText('Valor de cada parcela'), '1.000')
+  expect(
+    screen.getByText('Os juros passam do valor parcelado (R$ 1.000,00). Confira as parcelas.'),
+  ).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Registrar pagamento' }))
+  expect(await screen.findByText('Confirme os juros antes de registrar.')).toBeInTheDocument()
+  expect(sent).toEqual([])
+  await user.click(screen.getByLabelText('Confirmo os juros de R$ 23.000,00'))
+  await user.click(screen.getByRole('button', { name: 'Registrar pagamento' }))
+  await waitFor(() => expect(sent).toHaveLength(1))
+})

@@ -66,8 +66,9 @@ test('describe installment purchase', () => {
     card_id: CARDS.nubank.id,
     payment_method: 'CREDIT',
     installments: 6,
+    installment_amount: '200.00',
   })
   expect(describeSaved(tx, names)).toBe(
-    'Despesa registrada: R$ 1.200,00, ainda sem categoria, no crédito Nubank em 6x.',
+    'Despesa registrada: R$ 1.200,00, ainda sem categoria, no crédito Nubank em 6x de R$ 200,00.',
   )
 })

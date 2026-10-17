@@ -67,6 +67,7 @@ export function InvoicePaymentForm({ invoice, cardName, onDone, onCancel }: Prop
   const [choice, setChoice] = useState<Choice | null>(null)
   const [count, setCount] = useState('')
   const [installmentAmount, setInstallmentAmount] = useState('')
+  const [interestConfirmed, setInterestConfirmed] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [formError, setFormError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
@@ -91,6 +92,9 @@ export function InvoicePaymentForm({ invoice, cardName, onDone, onCancel }: Prop
   const hasRemainder = isPositive(remaining)
   const offersRemainder = hasRemainder && invoice.state === 'CLOSED'
   const plan = installmentPlan(count, installmentAmount)
+  const interest = plan ? interestOf(plan, remaining) : null
+  // Juros maiores que o próprio restante costumam ser erro de digitação: pede confirmação.
+  const excessive = interest !== null && isPositive(subtractMoney(interest, remaining))
 
   function update(sourceId: number, changes: Partial<Source>) {
     setSources((current) => current.map((s) => (s.id === sourceId ? { ...s, ...changes } : s)))
@@ -120,6 +124,9 @@ export function InvoicePaymentForm({ invoice, cardName, onDone, onCancel }: Prop
     if (offersRemainder && choice === null) local.choice = 'Escolha o que fazer com o restante.'
     if (offersRemainder && choice === 'INSTALLMENTS' && plan === null) {
       local.plan = 'Informe as parcelas e o valor de cada uma.'
+    }
+    if (offersRemainder && choice === 'INSTALLMENTS' && excessive && !interestConfirmed) {
+      local.interest = 'Confirme os juros antes de registrar.'
     }
     setErrors(local)
     if (Object.keys(local).length > 0) return
@@ -237,6 +244,10 @@ export function InvoicePaymentForm({ invoice, cardName, onDone, onCancel }: Prop
           onCount={setCount}
           installmentAmount={installmentAmount}
           onInstallmentAmount={setInstallmentAmount}
+          interest={interest}
+          excessive={excessive}
+          interestConfirmed={interestConfirmed}
+          onInterestConfirmed={setInterestConfirmed}
           errors={errors}
         />
       )}
@@ -258,6 +269,11 @@ export function InvoicePaymentForm({ invoice, cardName, onDone, onCancel }: Prop
   )
 }
 
+/** Juros do parcelamento: parcelas × valor − restante (informativo; o backend recalcula). */
+function interestOf(plan: { installments: number; installment_amount: string }, remaining: string) {
+  return subtractMoney(multiplyMoney(plan.installment_amount, plan.installments), remaining)
+}
+
 function installmentPlan(count: string, amount: string) {
   const parsed = tryParseMoney(amount)
   if (count === '' || parsed === null || !isPositive(parsed)) return null
@@ -273,6 +289,10 @@ function RemainderOptions({
   onCount,
   installmentAmount,
   onInstallmentAmount,
+  interest,
+  excessive,
+  interestConfirmed,
+  onInterestConfirmed,
   errors,
 }: {
   remaining: string
@@ -283,13 +303,13 @@ function RemainderOptions({
   onCount: (count: string) => void
   installmentAmount: string
   onInstallmentAmount: (amount: string) => void
+  interest: string | null
+  excessive: boolean
+  interestConfirmed: boolean
+  onInterestConfirmed: (confirmed: boolean) => void
   errors: Record<string, string>
 }) {
   const id = useId()
-  const plan = installmentPlan(count, installmentAmount)
-  const interest = plan
-    ? subtractMoney(multiplyMoney(plan.installment_amount, plan.installments), remaining)
-    : null
   const options: [Choice, string][] = [
     ['NONE', 'Só pagar esta parte agora'],
     ['CARRY_OVER', 'Deixar para a próxima fatura'],
@@ -348,6 +368,23 @@ function RemainderOptions({
             <p className="tabular text-sm">
               Juros que serão registrados: {formatBRLNoBreak(interest)}
             </p>
+          )}
+          {excessive && interest !== null && (
+            <>
+              <p className="text-sm font-semibold text-stamp">
+                Os juros passam do valor parcelado ({formatBRL(remaining)}). Confira as parcelas.
+              </p>
+              <label className="flex min-h-11 items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={interestConfirmed}
+                  onChange={(e) => onInterestConfirmed(e.target.checked)}
+                  className="size-5 accent-pen"
+                />
+                Confirmo os juros de {formatBRL(interest)}
+              </label>
+              {errors.interest && <p className={errorTextClass}>{errors.interest}</p>}
+            </>
           )}
           {interest !== null && interest.startsWith('-') && (
             <p className="text-sm text-stamp">As parcelas somam menos que o restante.</p>

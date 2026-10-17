@@ -296,3 +296,23 @@ test('closed invoice block on edit shows the server message', async () => {
     'Esta compra já está em fatura fechada. Registre um estorno.',
   )
 })
+
+test('card preview shows why the purchase would be refused', async () => {
+  mockApi()
+  server.use(
+    http.post('/api/v1/cards/:id/preview', () =>
+      HttpResponse.json(
+        {
+          status: 422,
+          code: 'purchase_before_card_opening',
+          detail: 'A compra é anterior ao início do cartão.',
+        },
+        { status: 422 },
+      ),
+    ),
+  )
+  const { user } = renderForm()
+  await fillCommon(await screen.findByLabelText('Valor').then(() => user), '80', 'farmácia')
+  await user.selectOptions(screen.getByLabelText('Conta ou cartão'), 'Crédito Nubank')
+  expect(await screen.findByText('A compra é anterior ao início do cartão.')).toBeInTheDocument()
+})

@@ -13,6 +13,7 @@ import type {
   CardPatch,
   CardSummaryOut,
   ChargeIn,
+  CycleOut,
   CategoryIn,
   CategoryKind,
   CategoryOut,
@@ -147,6 +148,15 @@ export const api = {
     }),
   previewPurchase: (cardId: string, body: PreviewIn) =>
     apiFetch<PurchasePreviewOut>(`${V1}/cards/${cardId}/preview`, { method: 'POST', body }),
+  cardCycle: (closingDay: number, dueDay: number, openingDate: string) =>
+    apiFetch<CycleOut>(
+      `${V1}/cards/cycle${query({ closing_day: closingDay, due_day: dueDay, opening_date: openingDate })}`,
+    ),
+  setOpeningTotal: (cardId: string, amount: string) =>
+    apiFetch<CardSummaryOut>(`${V1}/cards/${cardId}/opening-total`, {
+      method: 'PUT',
+      body: { amount },
+    }),
 
   monthSummary: (month: string) =>
     apiFetch<MonthSummaryOut>(`${V1}/summaries/month${query({ month })}`),

@@ -31,7 +31,9 @@ export function describeSaved(tx: TransactionOut, names: Names): string {
   }
   if (tx.card_id) {
     const card = names.cards.get(tx.card_id) ?? 'cartão'
-    const split = tx.installments ? ` em ${tx.installments}x` : ''
+    // O valor da parcela vem do backend (a sobra dos centavos fica na primeira).
+    const each = tx.installment_amount ? ` de ${formatBRL(tx.installment_amount)}` : ''
+    const split = tx.installments ? ` em ${tx.installments}x${each}` : ''
     return `Despesa registrada: ${amount}${where}, no crédito ${card}${split}.`
   }
   const method = tx.payment_method ? PAYMENT_METHOD_LABELS[tx.payment_method] : 'Outro'

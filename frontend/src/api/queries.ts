@@ -24,6 +24,8 @@ export const queryKeys = {
   cardInvoices: (cardId: string) => ['cards', cardId, 'invoices'] as const,
   invoice: (invoiceId: string) => ['invoice', invoiceId] as const,
   preview: (cardId: string, body: PreviewIn) => ['cards', cardId, 'preview', body] as const,
+  cycle: (closingDay: number, dueDay: number, openingDate: string) =>
+    ['cards', 'cycle', closingDay, dueDay, openingDate] as const,
 }
 
 export function useMe() {
@@ -143,5 +145,17 @@ export function usePurchasePreview(input: { cardId: string; body: PreviewIn } | 
     queryFn: () => api.previewPurchase(input!.cardId, input!.body),
     enabled: input !== null,
     placeholderData: keepPreviousData,
+  })
+}
+
+/** Qual fatura está aberta no início de um cartão ainda não cadastrado (rótulos do início). */
+export function useCardCycle(input: { closingDay: number; dueDay: number; openingDate: string } | null) {
+  return useQuery({
+    queryKey: input
+      ? queryKeys.cycle(input.closingDay, input.dueDay, input.openingDate)
+      : ['cards', 'cycle', 'off'],
+    queryFn: () => api.cardCycle(input!.closingDay, input!.dueDay, input!.openingDate),
+    enabled: input !== null,
+    staleTime: Infinity,
   })
 }

@@ -159,6 +159,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cards/cycle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Card Cycle
+         * @description Qual fatura está aberta no início de um cartão com esses dias (antes de cadastrá-lo).
+         */
+        get: operations["card_cycle_api_v1_cards_cycle_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cards/summary": {
         parameters: {
             query?: never;
@@ -194,6 +214,26 @@ export interface paths {
         head?: never;
         /** Update Card */
         patch: operations["update_card_api_v1_cards__card_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/cards/{card_id}/opening-total": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Opening Total
+         * @description Informa depois (ou corrige) o total da fatura aberta no início do cartão.
+         */
+        put: operations["set_opening_total_api_v1_cards__card_id__opening_total_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/cards/{card_id}/archive": {
@@ -781,6 +821,32 @@ export interface components {
              */
             due_date: string;
         };
+        /**
+         * CycleOut
+         * @description Fatura aberta de um cartão ainda não cadastrado, para os rótulos do início.
+         */
+        CycleOut: {
+            /**
+             * Open Reference Month
+             * Format: date
+             */
+            open_reference_month: string;
+            /**
+             * Open Closing Date
+             * Format: date
+             */
+            open_closing_date: string;
+            /**
+             * Open Due Date
+             * Format: date
+             */
+            open_due_date: string;
+            /**
+             * Next Reference Month
+             * Format: date
+             */
+            next_reference_month: string;
+        };
         /** EntryAccountOut */
         EntryAccountOut: {
             /**
@@ -935,11 +1001,26 @@ export interface components {
              */
             installment_amount: string;
         };
+        /**
+         * InvoiceAdjustmentOut
+         * @description Linha sem item próprio: crédito da fatura anterior ou valor levado adiante/parcelado.
+         */
+        InvoiceAdjustmentOut: {
+            /** Description */
+            description: string;
+            /**
+             * Amount
+             * @example 42.50
+             */
+            amount: string;
+        };
         /** InvoiceDetailOut */
         InvoiceDetailOut: {
             invoice: components["schemas"]["InvoiceSummaryOut"];
             /** Items */
             items: components["schemas"]["InvoiceItemOut"][];
+            /** Adjustments */
+            adjustments: components["schemas"]["InvoiceAdjustmentOut"][];
             /** Payments */
             payments: components["schemas"]["TransactionOut"][];
         };
@@ -1151,6 +1232,17 @@ export interface components {
             /** Detail */
             detail: string;
         };
+        /**
+         * OpeningTotalIn
+         * @description Total da fatura aberta no início do cartão; zero apaga.
+         */
+        OpeningTotalIn: {
+            /**
+             * Amount
+             * @example 42.50
+             */
+            amount: string;
+        };
         /** PaymentGroupVoidOut */
         PaymentGroupVoidOut: {
             /**
@@ -1292,6 +1384,11 @@ export interface components {
             created_at: string;
             /** Voided At */
             voided_at: string | null;
+            /**
+             * Installment Amount
+             * @description Valor de cada parcela (as demais; a primeira leva a sobra dos centavos).
+             */
+            readonly installment_amount: string | null;
         };
         /** TransactionPage */
         TransactionPage: {
@@ -1737,6 +1834,39 @@ export interface operations {
             };
         };
     };
+    card_cycle_api_v1_cards_cycle_get: {
+        parameters: {
+            query: {
+                closing_day: number;
+                due_day: number;
+                opening_date?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CycleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     cards_summary_api_v1_cards_summary_get: {
         parameters: {
             query?: never;
@@ -1779,6 +1909,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CardOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_opening_total_api_v1_cards__card_id__opening_total_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                card_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpeningTotalIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardSummaryOut"];
                 };
             };
             /** @description Validation Error */

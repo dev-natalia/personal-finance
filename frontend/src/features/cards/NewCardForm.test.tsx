@@ -20,6 +20,14 @@ function mockApi(failFirstInstallment = false) {
   server.use(
     http.get('/api/v1/entry-hints', () => HttpResponse.json(HINTS)),
     http.get('/api/v1/cards/summary', () => HttpResponse.json(CARDS_SUMMARY)),
+    http.get('/api/v1/cards/cycle', () =>
+      HttpResponse.json({
+        open_reference_month: '2026-11-01',
+        open_closing_date: '2026-11-03',
+        open_due_date: '2026-11-10',
+        next_reference_month: '2026-12-01',
+      }),
+    ),
     http.post('/api/v1/cards', async ({ request }) => {
       const body = (await request.json()) as Record<string, unknown>
       cards.push(body)
@@ -70,9 +78,9 @@ test('creates card with opening totals', async () => {
   const { user, onCreated } = renderForm()
   await fillCard(user)
   expect(screen.getByLabelText('Começa a acompanhar em')).toHaveValue(TODAY)
-  await user.type(screen.getByLabelText('Total da fatura aberta agora'), '1.240')
+  await user.type(await screen.findByLabelText('Total da fatura de novembro (aberta agora)'), '1.240')
   await user.click(screen.getByLabelText('Tem fatura fechada sem pagar'))
-  await user.type(screen.getByLabelText('Total da fatura fechada'), '2.380')
+  await user.type(screen.getByLabelText('Total da fatura de outubro (fechada)'), '2.380')
   fireEvent.change(screen.getByLabelText('Vencimento da fatura fechada'), {
     target: { value: '2026-10-10' },
   })
@@ -104,7 +112,7 @@ test('in-progress installments are sent after the card', async () => {
   fireEvent.change(within(line).getByLabelText('Data da compra'), {
     target: { value: '2026-07-20' },
   })
-  await user.selectOptions(within(line).getByLabelText('Quantas faltam depois da fatura atual'), '5')
+  await user.selectOptions(await within(line).findByLabelText('Quantas faltam depois da fatura de novembro'), '5')
   await user.click(screen.getByRole('button', { name: 'Criar cartão' }))
   await waitFor(() => expect(onCreated).toHaveBeenCalledWith('Nubank'))
   expect(api.installments).toHaveLength(1)
@@ -132,7 +140,7 @@ test('failed installment line can be retried alone', async () => {
   fireEvent.change(within(line).getByLabelText('Data da compra'), {
     target: { value: '2026-07-20' },
   })
-  await user.selectOptions(within(line).getByLabelText('Quantas faltam depois da fatura atual'), '5')
+  await user.selectOptions(await within(line).findByLabelText('Quantas faltam depois da fatura de novembro'), '5')
   await user.click(screen.getByRole('button', { name: 'Criar cartão' }))
   expect(await within(line).findByRole('alert')).toHaveTextContent(
     'Compras a partir do início do cartão entram como compra normal.',
@@ -172,4 +180,17 @@ test('new card form has no accessibility violations', async () => {
   await screen.findByLabelText('Nome do cartão')
   await user.click(screen.getByRole('button', { name: 'Adicionar parcelada em andamento' }))
   await expectNoA11yViolations(container)
+})
+
+test('opening labels name the invoice months', async () => {
+  mockApi()
+  const { user } = renderForm()
+  await fillCard(user)
+  expect(await screen.findByLabelText('Total da fatura de novembro (aberta agora)')).toBeInTheDocument()
+  await user.click(screen.getByLabelText('Tem fatura fechada sem pagar'))
+  expect(screen.getByLabelText('Total da fatura de outubro (fechada)')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Adicionar parcelada em andamento' }))
+  const line = screen.getByRole('group', { name: 'Parcelada 1' })
+  expect(within(line).getByLabelText('Quantas faltam depois da fatura de novembro')).toBeInTheDocument()
+  expect(within(line).getByText('Entram a partir da fatura de dezembro.')).toBeInTheDocument()
 })

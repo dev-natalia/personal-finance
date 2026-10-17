@@ -153,6 +153,7 @@ export function transaction(overrides: Partial<TransactionOut> = {}): Transactio
     refund_of_id: null,
     card_id: null,
     installments: null,
+    installment_amount: null,
     remaining_installments: null,
     invoice_id: null,
     payment_group_id: null,

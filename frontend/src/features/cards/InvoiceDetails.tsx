@@ -34,7 +34,7 @@ export function InvoiceDetails({
   if (detail.isPending) return <p className="py-2 text-sm text-ink-soft">Carregando…</p>
   if (detail.isError) return <p className={errorTextClass}>{messageOf(detail.error)}</p>
 
-  const { invoice, items, payments } = detail.data
+  const { invoice, items, adjustments, payments } = detail.data
   const month = monthName(invoice.reference_month)
   return (
     <div className="pb-2">
@@ -44,6 +44,18 @@ export function InvoiceDetails({
         <ul aria-label={`Itens da fatura de ${month}`}>
           {items.map((item) => (
             <ItemRow key={item.id} item={item} />
+          ))}
+        </ul>
+      )}
+      {adjustments.length > 0 && (
+        // Crédito herdado e o que saiu sem pagamento (levado adiante ou parcelado): sem estas
+        // linhas, uma fatura "paga" com pagamento menor que o total não fecha na conta.
+        <ul aria-label={`Ajustes da fatura de ${month}`}>
+          {adjustments.map((adjustment) => (
+            <li key={adjustment.description} className={ledgerRowClass}>
+              <span className="min-w-0">{adjustment.description}</span>
+              <span className="tabular shrink-0">{formatBRL(`-${adjustment.amount}`)}</span>
+            </li>
           ))}
         </ul>
       )}
