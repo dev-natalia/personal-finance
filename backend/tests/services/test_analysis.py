@@ -9,14 +9,14 @@ from sqlalchemy.orm import Session
 
 from app.domain.errors import NotFound
 from app.domain.periods import PeriodKind, period_containing
-from app.models import Account, Card, PaymentMethod
+from app.models import Account, Card, PaymentMethod, Transaction, TransactionType
 from app.services import analysis, card_ledger, cards, invoice_payments, transactions
 from app.services.analysis import CategoryTotal, DayTotal, PlaceTotal
 from app.services.context import RequestContext
 from app.services.invoice_payments import NewInvoicePayment, PaymentSource
 from app.services.ledger import Source, SpendingMode
-from app.services.transactions import NewCardExpense, NewExpense
-from tests.support import find_category, make_account
+from app.services.transactions import NewCardExpense, NewExpense, NewRefund
+from tests.support import find_category, insert_tx, make_account
 
 TODAY = date(2026, 10, 15)
 OCTOBER = period_containing(PeriodKind.MONTH, TODAY, TODAY)
@@ -332,3 +332,96 @@ def test_place_transactions_filter_by_source(
     assert [t.id for t in page.items] == [card_tx.id]
     described = analysis.place_transactions(db, ctx.user_id, "d:iof", source=None, cursor=None)
     assert described.items == []
+
+
+def test_refund_follows_a_merchant_edit(db: Session, ctx: RequestContext, itau: Account) -> None:
+    """Mudou o lugar da compra estornada: o estorno vai junto e o ranking não fica inflado."""
+    _spend(db, ctx, itau, "100.00", "Amazon", "Compras diversas")
+    [expense] = [p for p in _summary(db, ctx).by_place]
+    tx_id = (
+        analysis.place_transactions(db, ctx.user_id, expense.key, source=None, cursor=None)
+        .items[0]
+        .id
+    )
+    refund = transactions.create_refund(
+        db, ctx, tx_id, NewRefund(amount=D("30.00"), occurred_on=TODAY)
+    )
+    transactions.update_transaction(db, ctx, tx_id, {"merchant": "Amazon Prime"})
+    assert refund.transaction.merchant_id == db.get(Transaction, tx_id).merchant_id  # type: ignore[union-attr]
+    assert _places(_summary(db, ctx)) == [("Amazon Prime", D("70.00"), 1, "Compras diversas")]
+
+
+def test_refund_of_an_expense_without_merchant_reduces_its_place(
+    db: Session, ctx: RequestContext, itau: Account
+) -> None:
+    expense = insert_tx(
+        db,
+        ctx,
+        type=TransactionType.EXPENSE,
+        amount="80.00",
+        account=itau,
+        occurred_on=TODAY,
+        category=find_category(db, ctx, "Saúde"),
+        payment_method=PaymentMethod.PIX,
+        description="Farmácia do bairro",
+    )
+    transactions.create_refund(db, ctx, expense.id, NewRefund(amount=D("20.00"), occurred_on=TODAY))
+    [place] = _summary(db, ctx).by_place
+    assert (place.key, place.name, place.amount, place.purchases) == (
+        "d:farmácia do bairro",
+        "Farmácia do bairro",
+        D("60.00"),
+        1,
+    )
+    page = analysis.place_transactions(db, ctx.user_id, place.key, source=None, cursor=None)
+    assert sorted(t.type.value for t in page.items) == ["EXPENSE", "REFUND"]
+
+
+def test_negative_places_and_categories_still_add_up_to_the_total(
+    db: Session, ctx: RequestContext, itau: Account
+) -> None:
+    """Estorno em novembro de compra de outubro: aparece negativo, e as linhas fecham com o total."""
+    _spend(db, ctx, itau, "120.00", "Mercado Livre", "Compras diversas")
+    ml = analysis.place_transactions(
+        db, ctx.user_id, _summary(db, ctx).by_place[0].key, source=None, cursor=None
+    ).items[0]
+    transactions.create_refund(
+        db, ctx, ml.id, NewRefund(amount=D("50.00"), occurred_on=date(2026, 11, 2))
+    )
+    _spend(db, ctx, itau, "30.00", "iFood", "Alimentação", on=date(2026, 11, 3))
+    november = _summary(
+        db, ctx, period=period_containing(PeriodKind.MONTH, date(2026, 11, 1), TODAY)
+    )
+    assert november.total == D("-20.00")
+    assert _places(november) == [
+        ("iFood", D("30.00"), 1, "Alimentação"),
+        ("Mercado Livre", D("-50.00"), 0, "Compras diversas"),
+    ]
+    assert sum((p.amount for p in november.by_place), D(0)) == november.total
+    assert sum((c.amount for c in november.by_category), D(0)) == november.total
+
+
+def test_summary_lists_sources_with_spending(
+    db: Session, ctx: RequestContext, itau: Account, nubank: Card
+) -> None:
+    make_account(db, ctx, "Poupança", "0.00", opening_date=date(2026, 9, 1))
+    _spend(db, ctx, itau, "30.00", "iFood", "Alimentação")
+    _card_buy(db, ctx, nubank, "50.00")
+    result = _summary(db, ctx, source=Source("card", nubank.id))
+    assert sorted(result.sources) == sorted([f"account:{itau.id}", f"card:{nubank.id}"])
+
+
+def test_place_detail_source_applies_to_every_number(
+    db: Session, ctx: RequestContext, itau: Account, nubank: Card
+) -> None:
+    _spend(db, ctx, itau, "40.00", "iFood", "Alimentação")
+    _card_buy(db, ctx, nubank, "60.00")
+    detail = analysis.place_detail(
+        db,
+        ctx.user_id,
+        _key(db, ctx, "iFood"),
+        mode=SpendingMode.INSTALLMENTS,
+        source=Source("account", itau.id),
+        today=TODAY,
+    )
+    assert (detail.month.amount, detail.average) == (D("40.00"), D("40.00"))

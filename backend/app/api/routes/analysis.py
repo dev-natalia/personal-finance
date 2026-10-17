@@ -27,6 +27,8 @@ from app.services.ledger import Source, SpendingMode
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
+# A chave do lugar vai na busca, não no caminho: "d:<descrição>" pode ter "/".
+PlaceKey = Annotated[str, Query(min_length=3, max_length=300)]
 SourceParam = Annotated[str | None, Query(max_length=60)]
 ModeParam = Annotated[SpendingMode, Query()]
 
@@ -98,6 +100,7 @@ def summary(
             if result.busiest
             else None
         ),
+        sources=result.sources,
     )
 
 
@@ -125,9 +128,9 @@ def day(
     ]
 
 
-@router.get("/places/{key}", response_model=PlaceDetailOut)
+@router.get("/place", response_model=PlaceDetailOut)
 def place(
-    key: str,
+    key: PlaceKey,
     ctx: CtxDep,
     db: DbDep,
     mode: ModeParam = SpendingMode.INSTALLMENTS,
@@ -148,9 +151,9 @@ def place(
     )
 
 
-@router.get("/places/{key}/transactions", response_model=TransactionPage)
+@router.get("/place/transactions", response_model=TransactionPage)
 def place_transactions(
-    key: str,
+    key: PlaceKey,
     ctx: CtxDep,
     db: DbDep,
     source: SourceParam = None,

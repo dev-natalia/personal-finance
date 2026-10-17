@@ -1,6 +1,5 @@
 from decimal import Decimal
 from typing import Any
-from urllib.parse import quote
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -163,12 +162,12 @@ def test_place_detail_and_transactions(auth_client: TestClient) -> None:
     _setup(auth_client)
     places = auth_client.get("/api/v1/analysis/summary").json()["by_place"]
     key = next(p["key"] for p in places if p["name"] == "iFood")
-    detail = auth_client.get(f"/api/v1/analysis/places/{quote(key, safe='')}").json()
+    detail = auth_client.get("/api/v1/analysis/place", params={"key": key}).json()
     assert detail["name"] == "iFood"
     assert detail["month"] == {"amount": "30.00", "purchases": 1}
     assert detail["week"] == {"amount": "0.00", "purchases": 0}
     assert detail["average"] == "30.00"
-    page = auth_client.get(f"/api/v1/analysis/places/{quote(key, safe='')}/transactions").json()
+    page = auth_client.get("/api/v1/analysis/place/transactions", params={"key": key}).json()
     assert [t["amount"] for t in page["items"]] == ["30.00"]
     assert page["next_cursor"] is None
 
@@ -188,6 +187,25 @@ def test_other_users_place_is_not_found(
             payment_method=PaymentMethod.PIX,
         ),
     ).transaction
-    key = quote(f"m:{tx.merchant_id}", safe="")
-    assert auth_client.get(f"/api/v1/analysis/places/{key}").status_code == 404
-    assert auth_client.get(f"/api/v1/analysis/places/{key}/transactions").status_code == 404
+    key = f"m:{tx.merchant_id}"
+    assert auth_client.get("/api/v1/analysis/place", params={"key": key}).status_code == 404
+    response = auth_client.get("/api/v1/analysis/place/transactions", params={"key": key})
+    assert response.status_code == 404
+
+
+def test_place_with_a_slash_in_its_name(auth_client: TestClient) -> None:
+    """Encargo "IOF compra 1/2" (sem estabelecimento): a chave tem "/" e o lugar abre."""
+    card = _setup(auth_client)["card"]
+    _post(
+        auth_client,
+        f"/api/v1/cards/{card}/charges",
+        {"amount": "3.50", "occurred_on": "2026-10-15", "description": "IOF compra 1/2"},
+        key="iof-compra-1-2",
+    )
+    places = auth_client.get("/api/v1/analysis/summary").json()["by_place"]
+    key = next(p["key"] for p in places if p["name"] == "IOF compra 1/2")
+    assert key == "d:iof compra 1/2"
+    detail = auth_client.get("/api/v1/analysis/place", params={"key": key})
+    assert detail.status_code == 200, detail.text
+    page = auth_client.get("/api/v1/analysis/place/transactions", params={"key": key}).json()
+    assert [t["amount"] for t in page["items"]] == ["3.50"]

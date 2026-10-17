@@ -45,6 +45,8 @@ class AnalysisSummaryOut(BaseModel):
     by_place: list[PlaceTotalOut]
     by_day: list[DayTotalOut]
     busiest: DayTotalOut | None
+    # "account:<id>" / "card:<id>" com gasto no período (sem o filtro de origem).
+    sources: list[str]
 
 
 class DaySpendingOut(BaseModel):

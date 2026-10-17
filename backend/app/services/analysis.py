@@ -55,10 +55,17 @@ class AnalysisSummary:
     by_place: list[PlaceTotal]
     by_day: list[DayTotal]
     busiest: DayTotal | None
+    # Contas e cartões com gasto no período ("account:<id>", "card:<id>"), sem o filtro de origem:
+    # o filtro da tela lista os ativos e só os arquivados que aparecem aqui.
+    sources: list[str]
 
 
 def _by_category(session: Session, rows: Subquery) -> list[CategoryTotal]:
-    """Maiores primeiro; da sexta em diante juntas em "Outras" (a soma vem do banco)."""
+    """Maiores primeiro; da sexta em diante juntas em "Outras" (a soma vem do banco).
+
+    Categorias com saldo negativo (só estorno no período) também entram, por último: assim a
+    soma das linhas é sempre o total do período.
+    """
     amount = func.sum(rows.c.amount)
     ranked = (
         select(
@@ -69,7 +76,7 @@ def _by_category(session: Session, rows: Subquery) -> list[CategoryTotal]:
         )
         .join(rows, rows.c.category_id == Category.id)
         .group_by(Category.id, Category.name)
-        .having(amount > 0)
+        .having(amount != 0)
         .subquery()
     )
     top = session.execute(
@@ -85,7 +92,10 @@ def _by_category(session: Session, rows: Subquery) -> list[CategoryTotal]:
 
 
 def _by_place(session: Session, rows: Subquery) -> list[PlaceTotal]:
-    """Lugares do maior para o menor, com número de compras, nome e categoria principal."""
+    """Lugares do maior para o menor, com número de compras, nome e categoria principal.
+
+    Um lugar só com estorno no período fica negativo, no fim da lista (a soma fecha com o total).
+    """
     r = rows.c
     totals = session.execute(
         select(
@@ -94,7 +104,7 @@ def _by_place(session: Session, rows: Subquery) -> list[PlaceTotal]:
             func.count().filter(r.counts_as_purchase),
         )
         .group_by(r.place_key)
-        .having(func.sum(r.amount) > 0)
+        .having(func.sum(r.amount) != 0)
         .order_by(func.sum(r.amount).desc(), r.place_key)
     ).all()
     # Nome mais recente (a descrição pode variar) e categoria mais frequente (empate: maior valor).
@@ -149,6 +159,13 @@ def summary(
         )
     )
     total = session.scalar(select(func.coalesce(func.sum(every.c.amount), 0)))
+    unfiltered = spending_rows(user_id, period.start, period.end, mode=mode)
+    sources = [
+        f"account:{account_id}" if account_id else f"card:{card_id}"
+        for account_id, card_id in session.execute(
+            select(unfiltered.c.account_id, unfiltered.c.card_id).distinct()
+        )
+    ]
     by_day = _by_day(session, filtered, by_month=period.kind is PeriodKind.YEAR)
     return AnalysisSummary(
         period=period,
@@ -157,6 +174,7 @@ def summary(
         by_place=_by_place(session, filtered),
         by_day=by_day,
         busiest=max(by_day, key=lambda d: d.amount, default=None),
+        sources=sorted(sources),
     )
 
 
@@ -253,12 +271,16 @@ def place_detail(
 ) -> PlaceDetail:
     """Semana, mês e ano atuais de um lugar, e a média por compra (valor registrado, no ano)."""
     condition = _place_filter(session, user_id, key)
-    spent = (
+    spent = [
         Transaction.user_id == user_id,
         Transaction.status == TransactionStatus.CONFIRMED,
         Transaction.type.in_([TransactionType.EXPENSE, TransactionType.CHARGE]),
         condition,
-    )
+    ]
+    if source is not None:
+        # O filtro vale para todos os números da tela, não só para as caixas.
+        column = Transaction.account_id if source.kind == "account" else Transaction.card_id
+        spent.append(column == source.id)
     latest = session.execute(
         select(Merchant.name, Transaction.description)
         .outerjoin(Merchant, Merchant.id == Transaction.merchant_id)

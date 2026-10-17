@@ -27,7 +27,7 @@ from sqlalchemy import (
     select,
     union_all,
 )
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.domain.dates import month_range
 from app.domain.errors import RuleViolation
@@ -170,7 +170,8 @@ def spending_rows(
     anulados nunca entram.
 
     Colunas: transaction_id, day, amount, category_id, merchant_id, place_key, place_name,
-    counts_as_purchase (despesa ou encargo; falso para estorno).
+    counts_as_purchase (despesa ou encargo; falso para estorno), account_id, card_id. O lugar
+    do estorno é o da compra original (mesmo sem estabelecimento, pela descrição dela).
     """
     filters = [Transaction.user_id == user_id, _CONFIRMED]
     if source is not None:
@@ -179,14 +180,14 @@ def spending_rows(
     if category_id is not None:
         filters.append(Transaction.category_id == category_id)
 
+    original = aliased(Transaction)
+    merchant_id = func.coalesce(Transaction.merchant_id, original.merchant_id)
+    description = func.coalesce(original.description, Transaction.description)
     place_key = case(
-        (
-            Transaction.merchant_id.is_not(None),
-            literal("m:") + cast(Transaction.merchant_id, String),
-        ),
-        else_=literal("d:") + func.lower(func.trim(Transaction.description)),
+        (merchant_id.is_not(None), literal("m:") + cast(merchant_id, String)),
+        else_=literal("d:") + func.lower(func.trim(description)),
     )
-    place_name = func.coalesce(Merchant.name, Transaction.description)
+    place_name = func.coalesce(Merchant.name, description)
     is_refund = Transaction.type == TransactionType.REFUND
 
     def columns(day: Any, amount: Any) -> list[Any]:
@@ -195,10 +196,12 @@ def spending_rows(
             day.label("day"),
             amount.label("amount"),
             Transaction.category_id.label("category_id"),
-            Transaction.merchant_id.label("merchant_id"),
+            merchant_id.label("merchant_id"),
             place_key.label("place_key"),
             place_name.label("place_name"),
             (~is_refund).label("counts_as_purchase"),
+            Transaction.account_id.label("account_id"),
+            Transaction.card_id.label("card_id"),
         ]
 
     by_date_types = Transaction.type.in_(
@@ -212,7 +215,8 @@ def spending_rows(
                     case((is_refund, -Transaction.amount), else_=Transaction.amount),
                 )
             )
-            .outerjoin(Merchant, Merchant.id == Transaction.merchant_id)
+            .outerjoin(original, original.id == Transaction.refund_of_id)
+            .outerjoin(Merchant, Merchant.id == merchant_id)
             .where(*filters, by_date_types, Transaction.occurred_on.between(start, end))
             .subquery()
         )
@@ -229,7 +233,8 @@ def spending_rows(
                 case((is_refund, -(Transaction.amount - cancelled)), else_=Transaction.amount),
             )
         )
-        .outerjoin(Merchant, Merchant.id == Transaction.merchant_id)
+        .outerjoin(original, original.id == Transaction.refund_of_id)
+        .outerjoin(Merchant, Merchant.id == merchant_id)
         .where(
             *filters,
             Transaction.occurred_on.between(start, end),
@@ -246,12 +251,15 @@ def spending_rows(
         select(*columns(day, InvoiceItem.amount))
         .select_from(InvoiceItem)
         .join(Transaction, Transaction.id == InvoiceItem.transaction_id)
-        .outerjoin(Merchant, Merchant.id == Transaction.merchant_id)
+        .outerjoin(original, original.id == Transaction.refund_of_id)
+        .outerjoin(Merchant, Merchant.id == merchant_id)
         .where(
             *filters,
             Transaction.installments.is_not(None),
             InvoiceItem.kind == InvoiceItemKind.PURCHASE,
             InvoiceItem.status == ItemStatus.ACTIVE,
+            # Poda barata pelo mês de consumo (o dia é calculado e não usa índice).
+            InvoiceItem.consumption_month.between(start.replace(day=1), end),
             day.between(start, end),
         )
     )
@@ -379,10 +387,18 @@ def list_transactions(
     if filters.types is not None:
         stmt = stmt.where(Transaction.type.in_(filters.types))
     if filters.description_key is not None:
-        stmt = stmt.where(
+        # Lugar sem estabelecimento: os lançamentos com essa descrição e os estornos deles.
+        original = aliased(Transaction)
+        described = and_(
             Transaction.merchant_id.is_(None),
             func.lower(func.trim(Transaction.description)) == filters.description_key,
         )
+        refunded = select(original.id).where(
+            original.user_id == user_id,
+            original.merchant_id.is_(None),
+            func.lower(func.trim(original.description)) == filters.description_key,
+        )
+        stmt = stmt.where(or_(described, Transaction.refund_of_id.in_(refunded)))
     if filters.status is not None:
         stmt = stmt.where(Transaction.status == filters.status)
     if cursor is not None:
