@@ -64,6 +64,14 @@ export function useCategories(kind?: CategoryKind) {
   return useQuery({ queryKey: queryKeys.categories(kind), queryFn: () => api.categories(kind) })
 }
 
+/** Todas as categorias, inclusive arquivadas: para dar nome a lançamentos antigos. */
+export function useAllCategories() {
+  return useQuery({
+    queryKey: [...queryKeys.categories(), 'with-archived'],
+    queryFn: () => api.categories(undefined, true),
+  })
+}
+
 /** Categoria lembrada pelo backend para um estabelecimento com exatamente este nome (normalizado). */
 export function useMerchantSuggestion(description: string) {
   const normalized = normalize(description)

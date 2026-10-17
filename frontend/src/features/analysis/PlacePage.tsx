@@ -1,12 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router'
+import { Link, useLocation, useParams, useSearchParams } from 'react-router'
 
-import {
-  useAnalysisPlace,
-  useAnalysisPlaceTransactions,
-  useCategories,
-  useEntryHints,
-} from '../../api/queries'
+import { useAnalysisPlace, useAnalysisPlaceTransactions, useEntryHints } from '../../api/queries'
 import type { PlaceTotalsOut, TransactionOut } from '../../api/types'
 import { dayLabel, monthName } from '../../domain/dates'
 import { PAYMENT_METHOD_LABELS } from '../../domain/labels'
@@ -20,6 +15,7 @@ import {
   secondaryButtonClass,
 } from '../../ui/styles'
 import { LedgerAmount, ledgerDetail } from '../home/Timeline'
+import { useLedgerNames } from './useLedgerNames'
 
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
 const purchasesText = (n: number) => `${n} ${n === 1 ? 'compra' : 'compras'}`
@@ -35,9 +31,12 @@ function sourceOf(tx: TransactionOut): string | null {
 export function PlacePage() {
   const { key = '' } = useParams()
   const [search] = useSearchParams()
+  const location = useLocation()
   const mode = search.get('mode') === 'purchase' ? 'purchase' : 'installments'
-  const source = search.get('source') ?? undefined
-  const detail = useAnalysisPlace(key, { mode, source })
+  // Sempre todas as compras do lugar: o filtro de cartão ou conta é escolhido aqui, nos chips.
+  const detail = useAnalysisPlace(key, { mode })
+  const from = (location.state as { from?: unknown } | null)?.from
+  const back = `/analise${typeof from === 'string' && from.startsWith('?') ? from : mode === 'purchase' ? '?mode=purchase' : ''}`
   const hints = useEntryHints()
   const today = hints.data?.today ?? ''
 
@@ -67,7 +66,7 @@ export function PlacePage() {
   ]
   return (
     <Page title={name}>
-      <Link to={`/analise${source || mode === 'purchase' ? `?${search.toString()}` : ''}`} className={`${linkClass} -mt-3 mb-2 inline-block text-sm`}>
+      <Link to={back} className={`${linkClass} -mt-3 mb-2 inline-block text-sm`}>
         ‹ Análise
       </Link>
       {category && <p className="text-ink-soft">{category}</p>}
@@ -81,24 +80,15 @@ export function PlacePage() {
         ))}
       </ul>
       {average && <p className="mt-2 text-sm">Média por compra: {formatBRL(average)}</p>}
-      <Purchases placeKey={key} initialSource={source ?? null} today={today} />
+      <Purchases placeKey={key} today={today} />
     </Page>
   )
 }
 
-function Purchases({
-  placeKey,
-  initialSource,
-  today,
-}: {
-  placeKey: string
-  initialSource: string | null
-  today: string
-}) {
-  const [source, setSource] = useState<string | null>(initialSource)
+function Purchases({ placeKey, today }: { placeKey: string; today: string }) {
+  const [source, setSource] = useState<string | null>(null)
   const list = useAnalysisPlaceTransactions(placeKey, source ?? undefined)
-  const hints = useEntryHints()
-  const categories = useCategories()
+  const names = useLedgerNames()
   const items = (list.data?.pages ?? []).flatMap((page) => page.items)
   // Os chips são os cartões e contas que já apareceram nas compras (não somem ao filtrar).
   const [known, setKnown] = useState<string[]>([])
@@ -110,11 +100,6 @@ function Purchases({
     })
   }, [items])
 
-  const names = {
-    accounts: new Map((hints.data?.accounts ?? []).map((a) => [a.id, a.name])),
-    cards: new Map((hints.data?.cards ?? []).map((c) => [c.id, c.name])),
-    categories: new Map((categories.data ?? []).map((c) => [c.id, c.name])),
-  }
   const labelOf = (value: string) => {
     const [kind, id = ''] = value.split(':')
     return kind === 'card'

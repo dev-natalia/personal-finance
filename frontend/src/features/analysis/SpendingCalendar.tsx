@@ -1,3 +1,5 @@
+import { type KeyboardEvent, useRef, useState } from 'react'
+
 import type { AnalysisSummaryOut, DayTotalOut } from '../../api/types'
 import { addDays, monthName, shortDate, weekdayIndex } from '../../domain/dates'
 import { formatBRL } from '../../domain/money'
@@ -77,10 +79,10 @@ export function SpendingCalendar({ summary, today, selectedDay, onDay, onMonth }
 
   const days: string[] = []
   for (let day = period.start; day <= period.end; day = addDays(day, 1)) days.push(day)
-  const withoutSpending = days.filter((day) => day <= today && !amounts.has(day)).length
-  const cells: (string | null)[] = [...Array(weekdayIndex(period.start)).fill(null), ...days]
-  const weeks: (string | null)[][] = []
-  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7))
+  // Só conta depois de saber que dia é hoje (senão apareceria "0" por um instante).
+  const withoutSpending = today
+    ? days.filter((day) => day <= today && !amounts.has(day)).length
+    : null
 
   return (
     <section aria-labelledby="calendar-title" className="mt-6">
@@ -93,45 +95,114 @@ export function SpendingCalendar({ summary, today, selectedDay, onDay, onMonth }
             Dia mais caro: {shortDate(busiest.day)}, {formatBRL(busiest.amount)}
           </span>
         )}
-        <span className="text-ink-soft">
-          Sem gasto: {withoutSpending} {withoutSpending === 1 ? 'dia' : 'dias'}
-        </span>
+        {withoutSpending !== null && (
+          <span className="text-ink-soft">
+            Sem gasto: {withoutSpending} {withoutSpending === 1 ? 'dia' : 'dias'}
+          </span>
+        )}
       </p>
-      <table aria-label="Seus dias" className="w-full table-fixed border-separate border-spacing-1">
-        <thead>
-          <tr>
-            {WEEKDAYS.map((weekday) => (
-              <th key={weekday} scope="col" className="text-[12px] font-normal text-ink-soft">
-                {weekday}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {weeks.map((week, index) => (
-            <tr key={index}>
-              {week.map((day, column) => {
-                if (day === null) return <td key={`empty-${column}`} />
-                const amount = amounts.get(day)
-                const label = `${shortDate(day)}: ${amount ? formatBRL(amount) : 'sem gasto'}`
-                return (
-                  <td key={day}>
-                    <button
-                      type="button"
-                      aria-label={label}
-                      aria-pressed={selectedDay === day}
-                      onClick={() => onDay(day)}
-                      className={`flex aspect-square min-h-11 w-full items-end justify-end rounded-md p-1 text-[12px] aria-pressed:outline aria-pressed:outline-2 aria-pressed:outline-ink ${LEVELS[level(amount, largest)]}`}
-                    >
-                      {Number(day.slice(8))}
-                    </button>
-                  </td>
-                )
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <DayGrid
+        days={days}
+        amounts={amounts}
+        largest={largest}
+        today={today}
+        selectedDay={selectedDay}
+        onDay={onDay}
+      />
     </section>
+  )
+}
+
+const MOVES: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }
+
+/**
+ * Grade de segunda a domingo. Uma só parada de Tab: as setas andam entre os dias (cima/baixo
+ * pulam uma semana), Home e End vão ao primeiro e ao último dia.
+ */
+function DayGrid({
+  days,
+  amounts,
+  largest,
+  today,
+  selectedDay,
+  onDay,
+}: {
+  days: string[]
+  amounts: Map<string, string>
+  largest: number
+  today: string
+  selectedDay: string | null
+  onDay: (day: string) => void
+}) {
+  const [active, setActive] = useState<string | null>(null)
+  const buttons = useRef(new Map<string, HTMLButtonElement>())
+  const first = days[0] ?? ''
+  const current =
+    (active && days.includes(active) && active) ||
+    (selectedDay && days.includes(selectedDay) && selectedDay) ||
+    (days.includes(today) ? today : first)
+
+  function onKeyDown(event: KeyboardEvent<HTMLButtonElement>, day: string) {
+    const index = days.indexOf(day)
+    let target: string | undefined
+    if (event.key in MOVES) target = days[index + (MOVES[event.key] ?? 0)]
+    else if (event.key === 'Home') target = first
+    else if (event.key === 'End') target = days[days.length - 1]
+    else return
+    event.preventDefault()
+    if (!target) return
+    setActive(target)
+    buttons.current.get(target)?.focus()
+  }
+
+  const cells: (string | null)[] = [...Array(weekdayIndex(first)).fill(null), ...days]
+  const weeks: (string | null)[][] = []
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7))
+
+  return (
+    <table aria-label="Seus dias" className="w-full table-fixed border-separate border-spacing-1">
+      <thead>
+        <tr>
+          {WEEKDAYS.map((weekday) => (
+            <th key={weekday} scope="col" className="text-[12px] font-normal text-ink-soft">
+              {weekday}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {weeks.map((week, index) => (
+          <tr key={index}>
+            {week.map((day, column) => {
+              if (day === null) return <td key={`empty-${column}`} />
+              const amount = amounts.get(day)
+              const label = `${shortDate(day)}: ${amount ? formatBRL(amount) : 'sem gasto'}`
+              return (
+                <td key={day}>
+                  <button
+                    ref={(element) => {
+                      if (element) buttons.current.set(day, element)
+                      else buttons.current.delete(day)
+                    }}
+                    type="button"
+                    tabIndex={day === current ? 0 : -1}
+                    aria-label={label}
+                    aria-pressed={selectedDay === day}
+                    onClick={() => {
+                      setActive(day)
+                      onDay(day)
+                    }}
+                    onKeyDown={(event) => onKeyDown(event, day)}
+                    className={`flex aspect-square min-h-11 w-full items-end justify-end rounded-md p-1 text-[12px] aria-pressed:outline aria-pressed:outline-2 aria-pressed:outline-ink ${LEVELS[level(amount, largest)]}`}
+                  >
+                    {Number(day.slice(8))}
+                  </button>
+                </td>
+              )
+            })}
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }

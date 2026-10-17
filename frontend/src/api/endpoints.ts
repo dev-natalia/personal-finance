@@ -179,11 +179,9 @@ export const api = {
   analysisDay: (params: AnalysisQuery & { date: string }) =>
     apiFetch<DaySpendingOut[]>(`${V1}/analysis/day${query(params)}`),
   analysisPlace: (key: string, params: Pick<AnalysisQuery, 'mode' | 'source'>) =>
-    apiFetch<PlaceDetailOut>(`${V1}/analysis/places/${encodeURIComponent(key)}${query(params)}`),
+    apiFetch<PlaceDetailOut>(`${V1}/analysis/place${query({ key, ...params })}`),
   analysisPlaceTransactions: (key: string, params: { source?: string; cursor?: string }) =>
-    apiFetch<TransactionPage>(
-      `${V1}/analysis/places/${encodeURIComponent(key)}/transactions${query(params)}`,
-    ),
+    apiFetch<TransactionPage>(`${V1}/analysis/place/transactions${query({ key, ...params })}`),
   monthSummary: (month: string) =>
     apiFetch<MonthSummaryOut>(`${V1}/summaries/month${query({ month })}`),
 }

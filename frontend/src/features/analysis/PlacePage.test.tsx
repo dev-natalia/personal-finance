@@ -2,11 +2,12 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { HttpResponse, http } from 'msw'
 import { Route, Routes } from 'react-router'
+
 import { expect, test } from 'vitest'
 
 import type { PlaceDetailOut } from '../../api/types'
 import { expectNoA11yViolations } from '../../test/axe'
-import { CARDS, CATEGORIES, HINTS, transaction } from '../../test/fixtures'
+import { ACCOUNTS, CARDS, CARDS_SUMMARY, CATEGORIES, HINTS, transaction } from '../../test/fixtures'
 import { renderWithProviders } from '../../test/render'
 import { server } from '../../test/server'
 import { PlacePage } from './PlacePage'
@@ -40,13 +41,26 @@ function mockApi(detail: PlaceDetailOut = DETAIL) {
   server.use(
     http.get('/api/v1/entry-hints', () => HttpResponse.json(HINTS)),
     http.get('/api/v1/categories', () => HttpResponse.json(CATEGORIES)),
-    http.get('/api/v1/analysis/places/:key', ({ request, params }) => {
-      expect(params.key).toBe('m:merchant-ifood')
-      detailQueries.push(new URL(request.url).searchParams)
+    http.get('/api/v1/accounts', () =>
+      HttpResponse.json([
+        { ...ACCOUNTS.itau, opening_balance: '0.00', opening_date: '2026-09-01', archived_at: null },
+      ]),
+    ),
+    http.get('/api/v1/cards', () =>
+      HttpResponse.json([
+        { ...CARDS_SUMMARY[0]!.card, archived_at: null },
+        { ...CARDS_SUMMARY[0]!.card, id: 'card-inter', name: 'Inter', archived_at: '2026-10-01T12:00:00Z' },
+      ]),
+    ),
+    http.get('/api/v1/analysis/place', ({ request }) => {
+      const query = new URL(request.url).searchParams
+      expect(query.get('key')).toBe('m:merchant-ifood')
+      detailQueries.push(query)
       return HttpResponse.json(detail)
     }),
-    http.get('/api/v1/analysis/places/:key/transactions', ({ request }) => {
+    http.get('/api/v1/analysis/place/transactions', ({ request }) => {
       const query = new URL(request.url).searchParams
+      expect(query.get('key')).toBe('m:merchant-ifood')
       pageQueries.push(query)
       if (query.get('source') === `card:${CARDS.nubank.id}`) {
         return HttpResponse.json({ items: [CARD], next_cursor: null })
@@ -58,7 +72,7 @@ function mockApi(detail: PlaceDetailOut = DETAIL) {
   return { detailQueries, pageQueries }
 }
 
-function renderPage(route = '/analise/lugar/m%3Amerchant-ifood') {
+function renderPage(route: string | { pathname: string; search?: string; state?: unknown } = '/analise/lugar/m%3Amerchant-ifood') {
   const view = renderWithProviders(
     <Routes>
       <Route path="/analise/lugar/:key" element={<PlacePage />} />
@@ -113,4 +127,49 @@ test('place page has no accessibility violations', async () => {
   const { container } = renderPage()
   await screen.findByText('Alimentação, crédito Nubank')
   await expectNoA11yViolations(container)
+})
+
+const INTER_PURCHASE = transaction({
+  id: 'tx-inter',
+  description: 'iFood',
+  amount: '25.00',
+  occurred_on: '2026-10-05',
+  account_id: null,
+  payment_method: null,
+  card_id: 'card-inter',
+  category_id: 'cat-alimentacao',
+})
+
+test('archived card keeps its name in the purchases', async () => {
+  mockApi()
+  server.use(
+    http.get('/api/v1/analysis/place/transactions', () =>
+      HttpResponse.json({ items: [PIX, INTER_PURCHASE], next_cursor: null }),
+    ),
+  )
+  renderPage()
+  const purchases = await screen.findByRole('region', { name: 'Compras' })
+  expect(await within(purchases).findByText('Alimentação, crédito Inter')).toBeInTheDocument()
+  expect(within(purchases).getByRole('button', { name: 'Crédito Inter' })).toBeInTheDocument()
+})
+
+test('place page always starts with all purchases', async () => {
+  const { pageQueries } = mockApi()
+  renderPage(`/analise/lugar/m%3Amerchant-ifood?source=card%3A${CARDS.nubank.id}`)
+  const purchases = await screen.findByRole('region', { name: 'Compras' })
+  await within(purchases).findByText('Alimentação, crédito Nubank')
+  expect(pageQueries[0]!.has('source')).toBe(false)
+  expect(within(purchases).getByRole('button', { name: 'Todas' })).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('back link returns to the analysis view it came from', async () => {
+  mockApi()
+  renderPage({
+    pathname: '/analise/lugar/m%3Amerchant-ifood',
+    state: { from: '?period=week&date=2026-10-05&category=cat-alimentacao' },
+  })
+  expect(await screen.findByRole('link', { name: '‹ Análise' })).toHaveAttribute(
+    'href',
+    '/analise?period=week&date=2026-10-05&category=cat-alimentacao',
+  )
 })

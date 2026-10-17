@@ -632,7 +632,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/analysis/places/{key}": {
+    "/api/v1/analysis/place": {
         parameters: {
             query?: never;
             header?: never;
@@ -643,7 +643,7 @@ export interface paths {
          * Place
          * @description Semana, mês e ano atuais de um lugar, e a média por compra.
          */
-        get: operations["place_api_v1_analysis_places__key__get"];
+        get: operations["place_api_v1_analysis_place_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -652,7 +652,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/analysis/places/{key}/transactions": {
+    "/api/v1/analysis/place/transactions": {
         parameters: {
             query?: never;
             header?: never;
@@ -663,7 +663,7 @@ export interface paths {
          * Place Transactions
          * @description Compras, encargos e estornos do lugar, do mais recente ao mais antigo.
          */
-        get: operations["place_transactions_api_v1_analysis_places__key__transactions_get"];
+        get: operations["place_transactions_api_v1_analysis_place_transactions_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -768,6 +768,8 @@ export interface components {
             /** By Day */
             by_day: components["schemas"]["DayTotalOut"][];
             busiest: components["schemas"]["DayTotalOut"] | null;
+            /** Sources */
+            sources: string[];
         };
         /** BalancesOut */
         BalancesOut: {
@@ -3057,16 +3059,15 @@ export interface operations {
             };
         };
     };
-    place_api_v1_analysis_places__key__get: {
+    place_api_v1_analysis_place_get: {
         parameters: {
-            query?: {
+            query: {
+                key: string;
                 mode?: components["schemas"]["SpendingMode"];
                 source?: string | null;
             };
             header?: never;
-            path: {
-                key: string;
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -3091,16 +3092,15 @@ export interface operations {
             };
         };
     };
-    place_transactions_api_v1_analysis_places__key__transactions_get: {
+    place_transactions_api_v1_analysis_place_transactions_get: {
         parameters: {
-            query?: {
+            query: {
+                key: string;
                 source?: string | null;
                 cursor?: string | null;
             };
             header?: never;
-            path: {
-                key: string;
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;

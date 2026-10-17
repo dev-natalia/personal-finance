@@ -49,6 +49,16 @@ function mockApi(summary: (params: URLSearchParams) => AnalysisSummaryOut = () =
           ? [
               { transaction: transaction({ description: 'Mercado Livre', amount: '120.00' }), amount: '120.00' },
               { transaction: transaction({ description: 'iFood', amount: '40.00' }), amount: '40.00' },
+              {
+                transaction: transaction({
+                  description: 'farmácia',
+                  amount: '15.00',
+                  account_id: null,
+                  payment_method: null,
+                  card_id: 'card-inter',
+                }),
+                amount: '15.00',
+              },
             ]
           : [],
       )
@@ -145,11 +155,20 @@ test('source filter sends card', async () => {
 })
 
 test('archived sources still listed in the filter', async () => {
-  mockApi()
+  mockApi(() => ({ ...ANALYSIS_SUMMARY, sources: ['account:acc-carteira', 'card:card-inter'] }))
   renderPage()
   const select = await screen.findByLabelText('Cartão ou conta')
   expect(await within(select).findByRole('option', { name: 'Carteira (arquivada)' })).toBeInTheDocument()
   expect(within(select).getByRole('option', { name: 'Crédito Inter (arquivado)' })).toBeInTheDocument()
+})
+
+test('archived sources without spending are not listed', async () => {
+  mockApi()
+  renderPage()
+  const select = await screen.findByLabelText('Cartão ou conta')
+  await within(select).findByRole('option', { name: 'Crédito Nubank' })
+  expect(within(select).queryByRole('option', { name: 'Carteira (arquivada)' })).not.toBeInTheDocument()
+  expect(within(select).queryByRole('option', { name: 'Crédito Inter (arquivado)' })).not.toBeInTheDocument()
 })
 
 test('empty period shows one line', async () => {
@@ -223,14 +242,12 @@ test('ranking shows five and expands', async () => {
   expect(within(ranking).getAllByRole('listitem')).toHaveLength(7)
 })
 
-test('place links carry mode and source', async () => {
+test('place links carry only the mode', async () => {
   mockApi()
   renderPage('/analise?mode=purchase&source=card:card-nubank')
   const link = await screen.findByRole('link', { name: 'iFood' })
-  expect(link).toHaveAttribute(
-    'href',
-    '/analise/lugar/m%3Amerchant-ifood?mode=purchase&source=card%3Acard-nubank',
-  )
+  // A tela do lugar mostra todas as compras de lá; o filtro de cartão não vai junto.
+  expect(link).toHaveAttribute('href', '/analise/lugar/m%3Amerchant-ifood?mode=purchase')
 })
 
 test('calendar starts on monday', async () => {
@@ -298,4 +315,54 @@ test('year shows months and opens the month', async () => {
   await user.click(within(months).getByRole('button', { name: 'setembro: R$ 30,00' }))
   await waitFor(() => expect(last(queries).get('period')).toBe('month'))
   expect(last(queries).get('date')).toBe('2026-09-01')
+})
+
+test('refund-only place shows a negative amount', async () => {
+  mockApi(() => ({
+    ...ANALYSIS_SUMMARY,
+    by_place: [
+      ...ANALYSIS_SUMMARY.by_place,
+      { key: 'm:merchant-amazon', name: 'Amazon', amount: '-50.00', purchases: 0, category_name: 'Compras diversas' },
+    ],
+  }))
+  renderPage()
+  const ranking = await screen.findByRole('list', { name: 'Onde você mais gastou' })
+  const amazon = within(ranking).getByRole('link', { name: 'Amazon' }).closest('li')!
+  expect(within(amazon).getByText('−R$ 50,00')).toBeInTheDocument()
+  expect(within(amazon).getByText('Estorno · Compras diversas')).toBeInTheDocument()
+})
+
+test('calendar is one tab stop and arrows move between days', async () => {
+  mockApi()
+  const { user } = renderPage()
+  const calendar = await screen.findByRole('table', { name: 'Seus dias' })
+  const focusable = within(calendar)
+    .getAllByRole('button')
+    .filter((b) => b.tabIndex === 0)
+  expect(focusable.map((b) => b.getAttribute('aria-label'))).toEqual(['15/10: R$ 20,50'])
+  focusable[0]!.focus()
+  await user.keyboard('{ArrowRight}')
+  expect(within(calendar).getByRole('button', { name: '16/10: sem gasto' })).toHaveFocus()
+  await user.keyboard('{ArrowUp}')
+  expect(within(calendar).getByRole('button', { name: '09/10: R$ 160,00' })).toHaveFocus()
+  await user.keyboard('{Home}')
+  expect(within(calendar).getByRole('button', { name: '01/10: sem gasto' })).toHaveFocus()
+  await user.keyboard('{End}')
+  expect(within(calendar).getByRole('button', { name: '31/10: sem gasto' })).toHaveFocus()
+})
+
+test('days without spending wait for today', async () => {
+  mockApi()
+  server.use(http.get('/api/v1/entry-hints', () => new Promise<Response>(() => {})))
+  renderPage()
+  await screen.findByText('Dia mais caro: 09/10, R$ 160,00')
+  expect(screen.queryByText(/Sem gasto/)).not.toBeInTheDocument()
+})
+
+test('day details name archived cards', async () => {
+  mockApi()
+  const { user } = renderPage()
+  await user.click(await screen.findByRole('button', { name: '09/10: R$ 160,00' }))
+  const details = await screen.findByRole('region', { name: 'Gastos de 09/10' })
+  expect(await within(details).findByText('Mercado, crédito Inter')).toBeInTheDocument()
 })

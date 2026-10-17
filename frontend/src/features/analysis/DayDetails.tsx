@@ -1,20 +1,15 @@
-import { useAnalysisDay, useCategories, useEntryHints } from '../../api/queries'
+import { useAnalysisDay } from '../../api/queries'
 import type { AnalysisQuery } from '../../api/endpoints'
 import { shortDate } from '../../domain/dates'
 import { formatBRL } from '../../domain/money'
 import { ledgerRowClass } from '../../ui/styles'
 import { ledgerDetail } from '../home/Timeline'
+import { useLedgerNames } from './useLedgerNames'
 
 /** O que foi gasto num dia tocado no calendário (o valor que conta no dia). */
 export function DayDetails({ day, query }: { day: string; query: AnalysisQuery }) {
   const items = useAnalysisDay({ ...query, date: day })
-  const hints = useEntryHints()
-  const categories = useCategories()
-  const names = {
-    accounts: new Map((hints.data?.accounts ?? []).map((a) => [a.id, a.name])),
-    cards: new Map((hints.data?.cards ?? []).map((c) => [c.id, c.name])),
-    categories: new Map((categories.data ?? []).map((c) => [c.id, c.name])),
-  }
+  const names = useLedgerNames()
   const title = `Gastos de ${shortDate(day)}`
 
   return (

@@ -187,6 +187,7 @@ export const ANALYSIS_SUMMARY: AnalysisSummaryOut = {
     { day: '2026-10-15', amount: '20.50' },
   ],
   busiest: { day: '2026-10-09', amount: '160.00' },
+  sources: ['account:acc-itau', 'card:card-nubank'],
 }
 
 export const EMPTY_ANALYSIS: AnalysisSummaryOut = {

@@ -1,4 +1,5 @@
 import { useId, useState } from 'react'
+import { useLocation } from 'react-router'
 
 import { useAccounts, useAnalysisSummary, useCards, useEntryHints } from '../../api/queries'
 import type { AnalysisSummaryOut, PeriodOut } from '../../api/types'
@@ -47,13 +48,9 @@ function arrowLabels(period: PeriodOut): { previous: string; next: string } {
   }
 }
 
-/** Modo e cartão/conta levados para a tela do lugar (só quando diferentes do padrão). */
-function placeSearch(mode: string, source: string | null): string {
-  const search = new URLSearchParams()
-  if (mode === 'purchase') search.set('mode', mode)
-  if (source) search.set('source', source)
-  const text = search.toString()
-  return text ? `?${text}` : ''
+/** A tela do lugar mostra todas as compras de lá: só o modo vai junto, nunca o filtro. */
+function placeSearch(mode: string): string {
+  return mode === 'purchase' ? '?mode=purchase' : ''
 }
 
 function isEmpty(summary: AnalysisSummaryOut): boolean {
@@ -74,12 +71,13 @@ export function AnalysisPage() {
   const summary = useAnalysisSummary(query)
   // Dia tocado no calendário; vale só para o período em que foi escolhido.
   const [picked, setPicked] = useState<{ day: string; period: string } | null>(null)
+  const location = useLocation()
   const currentYear = (hints.data?.today ?? '').slice(0, 4)
   const data = summary.data
 
   return (
     <Page title="Análise">
-      <Controls />
+      <Controls sources={data?.sources ?? []} />
       {summary.isError && (
         <p role="alert" className={errorTextClass}>
           Não foi possível carregar a análise. Tente de novo.
@@ -101,7 +99,11 @@ export function AnalysisPage() {
                 selected={params.categoryId}
                 onSelect={(categoryId) => params.set({ categoryId })}
               />
-              <PlaceRanking places={data.by_place} search={placeSearch(params.mode, params.source)} />
+              <PlaceRanking
+                places={data.by_place}
+                search={placeSearch(params.mode)}
+                from={location.search}
+              />
               <SpendingCalendar
                 summary={data}
                 today={hints.data?.today ?? ''}
@@ -122,11 +124,16 @@ export function AnalysisPage() {
   )
 }
 
-function Controls() {
+/** Ativos sempre; arquivados só se tiveram gasto no período (ou se já estão escolhidos). */
+function Controls({ sources }: { sources: string[] }) {
   const id = useId()
   const params = useAnalysisParams()
   const accounts = useAccounts(true)
   const cards = useCards(true)
+  const listed = (kind: 'account' | 'card', item: { id: string; archived_at: string | null }) => {
+    const value = `${kind}:${item.id}`
+    return item.archived_at === null || sources.includes(value) || params.source === value
+  }
   return (
     <div className="flex flex-col gap-3">
       <div role="group" aria-label="Período" className="flex flex-wrap gap-2">
@@ -169,14 +176,14 @@ function Controls() {
         >
           <option value="">Todos</option>
           <optgroup label="Contas">
-            {(accounts.data ?? []).map((a) => (
+            {(accounts.data ?? []).filter((a) => listed('account', a)).map((a) => (
               <option key={a.id} value={`account:${a.id}`}>
                 {a.archived_at ? `${a.name} (arquivada)` : a.name}
               </option>
             ))}
           </optgroup>
           <optgroup label="Cartões">
-            {(cards.data ?? []).map((c) => (
+            {(cards.data ?? []).filter((c) => listed('card', c)).map((c) => (
               <option key={c.id} value={`card:${c.id}`}>
                 {PAYMENT_METHOD_LABELS.CREDIT} {c.name}
                 {c.archived_at ? ' (arquivado)' : ''}
