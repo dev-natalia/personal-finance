@@ -163,7 +163,7 @@ CRUD e arquivamento. Arquivar conta com saldo diferente de zero é permitido, co
 
 ### `LedgerQueries` (única fonte das definições de indicadores)
 - `account_balance(account, as_of)` = abertura + Σ`INCOME` + Σ`REFUND` + Σ`TRANSFER` recebidas − Σ`EXPENSE` − Σ`TRANSFER` enviadas; apenas `CONFIRMED` e `occurred_on ≤ as_of`.
-- `total_balance(as_of)` = soma das contas ativas e arquivadas.
+- `total_balance(as_of)` = soma das contas **ativas** (revisto em 2026-10-17: arquivar tira a conta do total; o saldo que ficou em contas arquivadas aparece à parte, `archived_balance`). Contas e cartões arquivados podem ser desarquivados.
 - `monthly_consumption_by_category(month)` = Σ`EXPENSE` − Σ`REFUND` por categoria; transferências nunca entram.
 - `monthly_income(month)` = Σ`INCOME`.
 - `list_transactions(filters, cursor)`: filtros por período, conta, categoria, estabelecimento, meio, tipo, status; ordenação `occurred_on desc, id desc`; paginação por cursor.

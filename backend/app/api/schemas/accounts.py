@@ -46,5 +46,7 @@ class AccountBalanceOut(BaseModel):
 
 class BalancesOut(BaseModel):
     as_of: date
+    # Só contas ativas; o que ficou em contas arquivadas vem à parte.
     total: Money
+    archived_total: Money
     accounts: list[AccountBalanceOut]
