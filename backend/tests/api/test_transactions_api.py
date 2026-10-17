@@ -229,9 +229,11 @@ def test_entry_hints_and_checks(auth_client: TestClient, itau_id: str) -> None:
     assert "PIX" in hints["payment_methods"]
     assert hints["top_payment_options"][0] == {
         "account_id": itau_id,
-        "account_name": "Itaú",
+        "card_id": None,
+        "name": "Itaú",
         "payment_method": "PIX",
     }
+    assert hints["cards"] == []
     checks = auth_client.post(
         "/api/v1/entry-checks",
         json={

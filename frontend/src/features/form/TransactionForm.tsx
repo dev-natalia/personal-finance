@@ -1,4 +1,4 @@
-import { type FormEvent, useId, useState } from 'react'
+import { type FormEvent, type ReactNode, useId, useState } from 'react'
 
 import { ApiError } from '../../api/client'
 import { api } from '../../api/endpoints'
@@ -13,9 +13,14 @@ import type {
   TransferIn,
 } from '../../api/types'
 import { useIdempotencyKey } from '../../api/useIdempotencyKey'
-import { PAYMENT_METHOD_LABELS, TRANSACTION_TYPE_LABELS } from '../../domain/labels'
+import {
+  ACCOUNT_PAYMENT_METHODS,
+  PAYMENT_METHOD_LABELS,
+  TRANSACTION_TYPE_LABELS,
+} from '../../domain/labels'
 import { isPositive, toInputAmount, tryParseMoney } from '../../domain/money'
 import type { PaymentMethod } from '../../domain/parser'
+import { CardImpact } from '../entry/CardImpact'
 import { Field, invalid } from '../../ui/Field'
 import { MoneyInput } from '../../ui/MoneyInput'
 import {
@@ -25,12 +30,16 @@ import {
   secondaryButtonClass,
 } from '../../ui/styles'
 
-type NewType = Exclude<TransactionType, 'REFUND'>
+type NewType = Extract<TransactionType, 'EXPENSE' | 'INCOME' | 'TRANSFER'>
 type Errors = Record<string, string>
 
 const NEW_TYPES: NewType[] = ['EXPENSE', 'INCOME', 'TRANSFER']
-const PAYMENT_METHODS = Object.entries(PAYMENT_METHOD_LABELS) as [PaymentMethod, string][]
+const PAYMENT_METHODS = ACCOUNT_PAYMENT_METHODS.map((m): [PaymentMethod, string] => [
+  m,
+  PAYMENT_METHOD_LABELS[m],
+])
 const AUTOMATIC = ''
+const INSTALLMENT_CHOICES = Array.from({ length: 23 }, (_, k) => k + 2)
 
 interface Fields {
   type: TransactionType
@@ -43,13 +52,23 @@ interface Fields {
   destination: string
   method: PaymentMethod | ''
   category: string
+  /** Cartão da compra; vazio quando sai de uma conta. */
+  card: string
+  /** Número de parcelas; vazio é à vista. */
+  installments: string
 }
 
-function fieldsOf(initial: TransactionOut | undefined): Fields {
+/** Atalho da tela do cartão: `/lancamentos/novo?card=…&date=…`. */
+export interface FormDefaults {
+  cardId?: string
+  date?: string
+}
+
+function fieldsOf(initial: TransactionOut | undefined, defaults: FormDefaults): Fields {
   return {
     type: initial?.type ?? 'EXPENSE',
     amount: initial ? toInputAmount(initial.amount) : '',
-    date: initial?.occurred_on ?? null,
+    date: initial?.occurred_on ?? defaults.date ?? null,
     description: initial?.description ?? '',
     merchant: '',
     notes: initial?.notes ?? '',
@@ -57,8 +76,12 @@ function fieldsOf(initial: TransactionOut | undefined): Fields {
     destination: initial?.destination_account_id ?? '',
     method: initial?.payment_method ?? '',
     category: initial?.category_id ?? AUTOMATIC,
+    card: initial ? (initial.card_id ?? '') : (defaults.cardId ?? ''),
+    installments: initial?.installments ? String(initial.installments) : '',
   }
 }
+
+const installmentsOf = (f: Fields): number | null => (f.installments ? Number(f.installments) : null)
 
 function serverErrors(error: unknown): { fields: Errors; detail: string } {
   if (!(error instanceof ApiError)) return { fields: {}, detail: 'Erro inesperado. Tente de novo.' }
@@ -76,7 +99,12 @@ function changedFields(initial: TransactionOut, f: Fields, amount: string, date:
   if (date !== initial.occurred_on) patch.occurred_on = date
   if (f.description.trim() !== initial.description) patch.description = f.description.trim()
   if (notes !== initial.notes) patch.notes = notes
-  if (f.account !== initial.account_id) patch.account_id = f.account
+  if (initial.account_id !== null && f.account !== initial.account_id) patch.account_id = f.account
+  if (initial.card_id !== null && f.card !== initial.card_id) patch.card_id = f.card
+  if (initial.type === 'EXPENSE' && initial.card_id !== null) {
+    const installments = installmentsOf(f)
+    if (installments !== initial.installments) patch.installments = installments
+  }
   if (initial.type === 'TRANSFER' && f.destination !== initial.destination_account_id) {
     patch.destination_account_id = f.destination
   }
@@ -105,6 +133,16 @@ function newBody(f: Fields, amount: string, date: string): ExpenseIn | IncomeIn 
     ...(f.category !== AUTOMATIC ? { category_id: f.category } : {}),
   }
   if (f.type === 'INCOME') return { type: 'INCOME', ...common, account_id: f.account, ...extra }
+  if (f.card) {
+    const installments = installmentsOf(f)
+    return {
+      type: 'EXPENSE',
+      ...common,
+      card_id: f.card,
+      ...(installments !== null ? { installments } : {}),
+      ...extra,
+    }
+  }
   return {
     type: 'EXPENSE',
     ...common,
@@ -116,18 +154,19 @@ function newBody(f: Fields, amount: string, date: string): ExpenseIn | IncomeIn 
 
 interface Props {
   initial?: TransactionOut
+  defaults?: FormDefaults
   onDone: (result: TransactionWriteOut) => void
   onCancel?: () => void
 }
 
 /** Formulário com todos os campos: cria despesa, receita ou transferência, ou edita um lançamento. */
-export function TransactionForm({ initial, onDone, onCancel }: Props) {
+export function TransactionForm({ initial, defaults = {}, onDone, onCancel }: Props) {
   const id = useId()
   const hints = useEntryHints()
   const categories = useCategories()
   const invalidate = useInvalidateLedger()
   const keyFor = useIdempotencyKey()
-  const [f, setF] = useState<Fields>(() => fieldsOf(initial))
+  const [f, setF] = useState<Fields>(() => fieldsOf(initial, defaults))
   const [errors, setErrors] = useState<Errors>({})
   const [detail, setDetail] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -143,6 +182,10 @@ export function TransactionForm({ initial, onDone, onCancel }: Props) {
   const kind = f.type === 'INCOME' ? 'INCOME' : 'EXPENSE'
   const kindCategories = (categories.data ?? []).filter((c) => c.kind === kind && !c.archived_at)
   const hasCategory = f.type === 'EXPENSE' || f.type === 'INCOME'
+  // Compra no cartão (ou encargo): sem conta nem meio; o cartão faz esse papel.
+  const onCard = f.card !== ''
+  const cards = hints.data?.cards ?? []
+  const missingCard = onCard && hints.data !== undefined && !cards.some((c) => c.id === f.card)
 
   function validate(amount: string | null): Errors {
     const local: Errors = {}
@@ -150,9 +193,9 @@ export function TransactionForm({ initial, onDone, onCancel }: Props) {
     else if (!isPositive(amount)) local.amount = 'Informe um valor maior que zero.'
     if (!date) local.occurred_on = 'Informe a data.'
     if (f.description.trim() === '') local.description = 'Informe uma descrição.'
-    if (!f.account) local.account_id = 'Escolha a conta.'
+    if (!onCard && !f.account) local.account_id = 'Escolha a conta.'
     if (f.type === 'TRANSFER' && !f.destination) local.destination_account_id = 'Escolha a conta de destino.'
-    if (f.type === 'EXPENSE' && !f.method) local.payment_method = 'Escolha o meio de pagamento.'
+    if (f.type === 'EXPENSE' && !onCard && !f.method) local.payment_method = 'Escolha o meio de pagamento.'
     return local
   }
 
@@ -222,7 +265,12 @@ export function TransactionForm({ initial, onDone, onCancel }: Props) {
             value={f.type}
             // Categoria é por tipo (despesa ou receita): a escolhida antes não vale mais.
             onChange={(e) =>
-              setF((p) => ({ ...p, type: e.target.value as NewType, category: AUTOMATIC }))
+              setF((p) => ({
+                ...p,
+                type: e.target.value as NewType,
+                category: AUTOMATIC,
+                ...(e.target.value === 'EXPENSE' ? {} : { card: '', installments: '' }),
+              }))
             }
             className={inputClass}
           >
@@ -300,24 +348,42 @@ export function TransactionForm({ initial, onDone, onCancel }: Props) {
           </Field>
         </div>
       ) : (
-        <Field
+        <SourceField
           id={`${id}-account`}
-          label={f.type === 'INCOME' ? 'Recebido em' : 'Conta'}
-          error={errors.account_id}
-        >
+          f={f}
+          editing={editing}
+          accounts={accounts}
+          cards={cards}
+          missingCard={missingCard}
+          accountOptions={accountOptions}
+          error={errors.account_id ?? errors.card_id}
+          onAccount={(account) => setF((p) => ({ ...p, account, card: '', installments: '' }))}
+          onCard={(card) => setF((p) => ({ ...p, card, account: '', method: '' }))}
+        />
+      )}
+
+      {f.type === 'EXPENSE' && onCard && (
+        <Field id={`${id}-installments`} label="Parcelas" error={errors.installments}>
           <select
-            id={`${id}-account`}
-            value={f.account}
-            onChange={(e) => set('account')(e.target.value)}
-            {...invalid(`${id}-account`, errors.account_id)}
+            id={`${id}-installments`}
+            value={f.installments}
+            onChange={(e) => set('installments')(e.target.value)}
+            {...invalid(`${id}-installments`, errors.installments)}
             className={inputClass}
           >
-            {accountOptions}
+            <option value="">À vista</option>
+            {INSTALLMENT_CHOICES.map((count) => (
+              <option key={count} value={count}>
+                {count}x
+              </option>
+            ))}
           </select>
         </Field>
       )}
 
-      {f.type === 'EXPENSE' && (
+      {!editing && f.type === 'EXPENSE' && onCard && <CardImpact input={previewOf(f, date)} />}
+
+      {f.type === 'EXPENSE' && !onCard && (
         <Field id={`${id}-method`} label="Meio" error={errors.payment_method}>
           <select
             id={`${id}-method`}
@@ -382,5 +448,121 @@ export function TransactionForm({ initial, onDone, onCancel }: Props) {
         )}
       </div>
     </form>
+  )
+}
+
+/** Prévia da compra no cartão; nula enquanto o valor não é válido. */
+function previewOf(f: Fields, date: string) {
+  const amount = tryParseMoney(f.amount)
+  if (amount === null || !isPositive(amount) || !date) return null
+  const installments = installmentsOf(f)
+  return {
+    cardId: f.card,
+    body: { amount, occurred_on: date, ...(installments !== null ? { installments } : {}) },
+  }
+}
+
+interface Named {
+  id: string
+  name: string
+}
+
+/**
+ * De onde sai o dinheiro. Despesa nova escolhe entre contas e cartões no mesmo campo; na
+ * edição, uma compra no cartão troca só de cartão e uma de conta, só de conta.
+ */
+function SourceField({
+  id,
+  f,
+  editing,
+  accounts,
+  cards,
+  missingCard,
+  accountOptions,
+  error,
+  onAccount,
+  onCard,
+}: {
+  id: string
+  f: Fields
+  editing: boolean
+  accounts: Named[]
+  cards: Named[]
+  missingCard: boolean
+  accountOptions: ReactNode
+  error: string | undefined
+  onAccount: (account: string) => void
+  onCard: (card: string) => void
+}) {
+  const cardLabel = (card: Named) => `${PAYMENT_METHOD_LABELS.CREDIT} ${card.name}`
+
+  if (editing || f.type === 'INCOME') {
+    const card = f.card !== ''
+    return (
+      <Field
+        id={id}
+        label={card ? 'Cartão' : f.type === 'INCOME' ? 'Recebido em' : 'Conta'}
+        error={error}
+      >
+        <select
+          id={id}
+          value={card ? f.card : f.account}
+          onChange={(e) => (card ? onCard(e.target.value) : onAccount(e.target.value))}
+          {...invalid(id, error)}
+          className={inputClass}
+        >
+          {card ? (
+            <>
+              {cards.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {cardLabel(c)}
+                </option>
+              ))}
+              {missingCard && <option value={f.card}>Cartão arquivado</option>}
+            </>
+          ) : (
+            accountOptions
+          )}
+        </select>
+      </Field>
+    )
+  }
+
+  // Um valor só para os dois grupos: "account:<id>" ou "card:<id>".
+  const value = f.card ? `card:${f.card}` : f.account ? `account:${f.account}` : ''
+  function choose(choice: string) {
+    const [kind, sourceId = ''] = choice.split(':')
+    if (kind === 'card') onCard(sourceId)
+    else onAccount(sourceId)
+  }
+  return (
+    <Field id={id} label="Conta ou cartão" error={error}>
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => choose(e.target.value)}
+        {...invalid(id, error)}
+        className={inputClass}
+      >
+        <option value="">Selecione</option>
+        <optgroup label="Contas">
+          {accounts.map((a) => (
+            <option key={a.id} value={`account:${a.id}`}>
+              {a.name}
+            </option>
+          ))}
+        </optgroup>
+        {(cards.length > 0 || missingCard) && (
+          <optgroup label="Cartões">
+            {cards.map((c) => (
+              <option key={c.id} value={`card:${c.id}`}>
+                {cardLabel(c)}
+              </option>
+            ))}
+            {missingCard && <option value={`card:${f.card}`}>Cartão arquivado</option>}
+          </optgroup>
+        )}
+      </select>
+    </Field>
   )
 }

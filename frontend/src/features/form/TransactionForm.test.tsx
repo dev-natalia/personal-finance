@@ -1,13 +1,15 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { HttpResponse, http } from 'msw'
+import { Route, Routes } from 'react-router'
 import { expect, test, vi } from 'vitest'
 
 import type { TransactionOut } from '../../api/types'
 import { expectNoA11yViolations } from '../../test/axe'
-import { ACCOUNTS, CATEGORIES, HINTS, TODAY, transaction } from '../../test/fixtures'
+import { ACCOUNTS, CARDS, CATEGORIES, HINTS, PREVIEW, TODAY, transaction } from '../../test/fixtures'
 import { renderWithProviders } from '../../test/render'
 import { server } from '../../test/server'
+import { FullFormPage } from './FullFormPage'
 import { TransactionForm } from './TransactionForm'
 
 interface Sent {
@@ -33,6 +35,7 @@ function mockApi(reply: Reply = () => ok()) {
       })
       return reply(created.length)
     }),
+    http.post('/api/v1/cards/:id/preview', () => HttpResponse.json(PREVIEW)),
     http.patch('/api/v1/transactions/:id', async ({ request }) => {
       patched.push((await request.json()) as Record<string, unknown>)
       return HttpResponse.json({ transaction: transaction(), replayed: false, warnings: [] })
@@ -115,7 +118,7 @@ test('expense needs a payment method before calling the server', async () => {
   const api = mockApi()
   const { user } = renderForm()
   await fillCommon(await screen.findByLabelText('Valor').then(() => user), '42', 'Mercado')
-  await user.selectOptions(screen.getByLabelText('Conta'), 'Itaú')
+  await user.selectOptions(screen.getByLabelText('Conta ou cartão'), 'Itaú')
   await user.click(screen.getByRole('button', { name: 'Salvar lançamento' }))
   expect(await screen.findByText('Escolha o meio de pagamento.')).toBeInTheDocument()
   expect(api.created).toEqual([])
@@ -127,7 +130,7 @@ test('expense sends notes, merchant and the chosen category', async () => {
   await fillCommon(await screen.findByLabelText('Valor').then(() => user), '42', 'Remédio')
   await user.type(screen.getByLabelText('Estabelecimento (opcional)'), 'Drogasil')
   await user.type(screen.getByLabelText('Notas (opcional)'), 'receita do médico')
-  await user.selectOptions(screen.getByLabelText('Conta'), 'Itaú')
+  await user.selectOptions(screen.getByLabelText('Conta ou cartão'), 'Itaú')
   await user.selectOptions(screen.getByLabelText('Meio'), 'Pix')
   await user.selectOptions(screen.getByLabelText('Categoria'), 'Saúde')
   await user.click(screen.getByRole('button', { name: 'Salvar lançamento' }))
@@ -198,4 +201,118 @@ test('form has no accessibility violations', async () => {
   const { container } = renderForm()
   await screen.findAllByRole('option', { name: 'Saúde' })
   await expectNoA11yViolations(container)
+})
+
+test('account method choices never offer credit', async () => {
+  mockApi()
+  renderForm()
+  const method = await screen.findByLabelText('Meio')
+  const labels = Array.from(method.querySelectorAll('option')).map((o) => o.textContent)
+  expect(labels).not.toContain('Crédito')
+  expect(labels).toContain('Pix')
+})
+
+test('full form sends a card purchase with installments', async () => {
+  const api = mockApi()
+  const { user, onDone } = renderForm()
+  await fillCommon(await screen.findByLabelText('Valor').then(() => user), '1.200', 'celular')
+  await user.selectOptions(screen.getByLabelText('Conta ou cartão'), 'Crédito Nubank')
+  expect(screen.queryByLabelText('Meio')).not.toBeInTheDocument()
+  await user.selectOptions(screen.getByLabelText('Parcelas'), '6x')
+  expect(await screen.findByText('Limite não é dinheiro.')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Salvar lançamento' }))
+  await waitFor(() => expect(onDone).toHaveBeenCalled())
+  expect(api.created[0]!.body).toEqual({
+    type: 'EXPENSE',
+    amount: '1200.00',
+    occurred_on: TODAY,
+    description: 'celular',
+    card_id: CARDS.nubank.id,
+    installments: 6,
+  })
+})
+
+test('full form reads card and date from the URL', async () => {
+  mockApi()
+  renderWithProviders(
+    <Routes>
+      <Route path="/lancamentos/novo" element={<FullFormPage />} />
+    </Routes>,
+    { route: `/lancamentos/novo?card=${CARDS.nubank.id}&date=2026-10-02` },
+  )
+  const form = await screen.findByRole('form', { name: 'Novo lançamento' })
+  await waitFor(() =>
+    expect(within(form).getByLabelText('Conta ou cartão')).toHaveDisplayValue('Crédito Nubank'),
+  )
+  expect(within(form).getByLabelText('Data')).toHaveValue('2026-10-02')
+  expect(within(form).getByLabelText('Parcelas')).toBeInTheDocument()
+})
+
+test('editing a card purchase has no account field', async () => {
+  const api = mockApi()
+  const purchase = transaction({
+    account_id: null,
+    payment_method: null,
+    card_id: CARDS.nubank.id,
+    installments: 6,
+    amount: '1200.00',
+    description: 'celular',
+  })
+  const { user, onDone } = renderForm(purchase)
+  const card = await screen.findByLabelText('Cartão')
+  await waitFor(() => expect(card).toHaveDisplayValue('Crédito Nubank'))
+  expect(screen.queryByLabelText('Conta')).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('Meio')).not.toBeInTheDocument()
+  await user.selectOptions(screen.getByLabelText('Parcelas'), '10x')
+  await user.click(screen.getByRole('button', { name: 'Salvar alterações' }))
+  await waitFor(() => expect(onDone).toHaveBeenCalled())
+  expect(api.patched).toEqual([{ installments: 10 }])
+})
+
+test('closed invoice block on edit shows the server message', async () => {
+  mockApi()
+  server.use(
+    http.patch('/api/v1/transactions/:id', () =>
+      HttpResponse.json(
+        {
+          status: 409,
+          code: 'void_blocked_by_closed_invoice',
+          detail: 'Esta compra já está em fatura fechada. Registre um estorno.',
+        },
+        { status: 409 },
+      ),
+    ),
+  )
+  const purchase = transaction({
+    account_id: null,
+    payment_method: null,
+    card_id: CARDS.nubank.id,
+    description: 'celular',
+  })
+  const { user } = renderForm(purchase)
+  await user.type(await screen.findByLabelText('Notas (opcional)'), 'x')
+  await user.click(screen.getByRole('button', { name: 'Salvar alterações' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Esta compra já está em fatura fechada. Registre um estorno.',
+  )
+})
+
+test('card preview shows why the purchase would be refused', async () => {
+  mockApi()
+  server.use(
+    http.post('/api/v1/cards/:id/preview', () =>
+      HttpResponse.json(
+        {
+          status: 422,
+          code: 'purchase_before_card_opening',
+          detail: 'A compra é anterior ao início do cartão.',
+        },
+        { status: 422 },
+      ),
+    ),
+  )
+  const { user } = renderForm()
+  await fillCommon(await screen.findByLabelText('Valor').then(() => user), '80', 'farmácia')
+  await user.selectOptions(screen.getByLabelText('Conta ou cartão'), 'Crédito Nubank')
+  expect(await screen.findByText('A compra é anterior ao início do cartão.')).toBeInTheDocument()
 })

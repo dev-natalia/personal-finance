@@ -141,6 +141,227 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Cards */
+        get: operations["list_cards_api_v1_cards_get"];
+        put?: never;
+        /** Create Card */
+        post: operations["create_card_api_v1_cards_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cards/cycle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Card Cycle
+         * @description Qual fatura está aberta no início de um cartão com esses dias (antes de cadastrá-lo).
+         */
+        get: operations["card_cycle_api_v1_cards_cycle_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cards/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cards Summary
+         * @description Fatura aberta, fatura a pagar, próximas faturas e limite de cada cartão ativo.
+         */
+        get: operations["cards_summary_api_v1_cards_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cards/{card_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Card */
+        patch: operations["update_card_api_v1_cards__card_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/cards/{card_id}/opening-total": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Opening Total
+         * @description Informa depois (ou corrige) o total da fatura aberta no início do cartão.
+         */
+        put: operations["set_opening_total_api_v1_cards__card_id__opening_total_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cards/{card_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive Card */
+        post: operations["archive_card_api_v1_cards__card_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cards/{card_id}/invoices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Card Invoices
+         * @description Fatura aberta, futuras e anteriores (paginadas do mês mais recente para o mais antigo).
+         */
+        get: operations["card_invoices_api_v1_cards__card_id__invoices_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cards/{card_id}/charges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Charge */
+        post: operations["add_charge_api_v1_cards__card_id__charges_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cards/{card_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Purchase
+         * @description Como a fatura e o limite ficariam com a compra. Não grava nada.
+         */
+        post: operations["preview_purchase_api_v1_cards__card_id__preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{invoice_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Invoice */
+        get: operations["get_invoice_api_v1_invoices__invoice_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Invoice */
+        patch: operations["update_invoice_api_v1_invoices__invoice_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/invoices/{invoice_id}/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pay Invoice */
+        post: operations["pay_invoice_api_v1_invoices__invoice_id__payments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payment-groups/{group_id}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Void Payment Group */
+        post: operations["void_payment_group_api_v1_payment_groups__group_id__void_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/categories": {
         parameters: {
             query?: never;
@@ -433,6 +654,90 @@ export interface components {
             /** Accounts */
             accounts: components["schemas"]["AccountBalanceOut"][];
         };
+        /** CardArchiveOut */
+        CardArchiveOut: {
+            card: components["schemas"]["CardOut"];
+            /** Warnings */
+            warnings: components["schemas"]["NoticeOut"][];
+        };
+        /** CardIn */
+        CardIn: {
+            /** Name */
+            name: string;
+            /**
+             * Credit Limit
+             * @example 42.50
+             */
+            credit_limit: string;
+            /** Closing Day */
+            closing_day: number;
+            /** Due Day */
+            due_day: number;
+            /**
+             * Opening Date
+             * Format: date
+             */
+            opening_date: string;
+            /** Open Invoice Total */
+            open_invoice_total?: string | null;
+            closed_invoice?: components["schemas"]["ClosedInvoiceIn"] | null;
+        };
+        /** CardInvoicesOut */
+        CardInvoicesOut: {
+            open: components["schemas"]["InvoiceSummaryOut"];
+            /** Future */
+            future: components["schemas"]["InvoiceSummaryOut"][];
+            /** Previous */
+            previous: components["schemas"]["InvoiceSummaryOut"][];
+            /** Next Before */
+            next_before: string | null;
+        };
+        /** CardOut */
+        CardOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Credit Limit
+             * @example 42.50
+             */
+            credit_limit: string;
+            /** Closing Day */
+            closing_day: number;
+            /** Due Day */
+            due_day: number;
+            /**
+             * Opening Date
+             * Format: date
+             */
+            opening_date: string;
+            /** Archived At */
+            archived_at: string | null;
+        };
+        /** CardPatch */
+        CardPatch: {
+            /** Name */
+            name?: string | null;
+            /** Credit Limit */
+            credit_limit?: string | null;
+            /** Closing Day */
+            closing_day?: number | null;
+            /** Due Day */
+            due_day?: number | null;
+        };
+        /** CardSummaryOut */
+        CardSummaryOut: {
+            card: components["schemas"]["CardOut"];
+            open_invoice: components["schemas"]["InvoiceSummaryOut"];
+            payable: components["schemas"]["InvoiceSummaryOut"] | null;
+            /** Future */
+            future: components["schemas"]["InvoiceSummaryOut"][];
+            limit: components["schemas"]["LimitOut"];
+        };
         /** CategoryAmountOut */
         CategoryAmountOut: {
             /**
@@ -488,6 +793,60 @@ export interface components {
             /** Is Essential */
             is_essential?: boolean | null;
         };
+        /** ChargeIn */
+        ChargeIn: {
+            /**
+             * Amount
+             * @example 42.50
+             */
+            amount: string;
+            /**
+             * Occurred On
+             * Format: date
+             */
+            occurred_on: string;
+            /** Description */
+            description: string;
+        };
+        /** ClosedInvoiceIn */
+        ClosedInvoiceIn: {
+            /**
+             * Total
+             * @example 42.50
+             */
+            total: string;
+            /**
+             * Due Date
+             * Format: date
+             */
+            due_date: string;
+        };
+        /**
+         * CycleOut
+         * @description Fatura aberta de um cartão ainda não cadastrado, para os rótulos do início.
+         */
+        CycleOut: {
+            /**
+             * Open Reference Month
+             * Format: date
+             */
+            open_reference_month: string;
+            /**
+             * Open Closing Date
+             * Format: date
+             */
+            open_closing_date: string;
+            /**
+             * Open Due Date
+             * Format: date
+             */
+            open_due_date: string;
+            /**
+             * Next Reference Month
+             * Format: date
+             */
+            next_reference_month: string;
+        };
         /** EntryAccountOut */
         EntryAccountOut: {
             /**
@@ -498,6 +857,16 @@ export interface components {
             /** Name */
             name: string;
             type: components["schemas"]["AccountType"];
+        };
+        /** EntryCardOut */
+        EntryCardOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
         };
         /** EntryCheckItem */
         EntryCheckItem: {
@@ -540,12 +909,18 @@ export interface components {
             today: string;
             /** Accounts */
             accounts: components["schemas"]["EntryAccountOut"][];
+            /** Cards */
+            cards: components["schemas"]["EntryCardOut"][];
             /** Payment Methods */
             payment_methods: components["schemas"]["PaymentMethod"][];
             /** Top Payment Options */
             top_payment_options: components["schemas"]["PaymentOptionOut"][];
         };
-        /** ExpenseIn */
+        /**
+         * ExpenseIn
+         * @description Despesa via conta (`account_id` + `payment_method`) ou no cartão (`card_id`, com
+         *     `installments` opcional; `remaining_installments` só para parcelada em andamento).
+         */
         ExpenseIn: {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -564,12 +939,15 @@ export interface components {
             occurred_on: string;
             /** Description */
             description: string;
-            /**
-             * Account Id
-             * Format: uuid
-             */
-            account_id: string;
-            payment_method: components["schemas"]["PaymentMethod"];
+            /** Account Id */
+            account_id?: string | null;
+            payment_method?: components["schemas"]["PaymentMethod"] | null;
+            /** Card Id */
+            card_id?: string | null;
+            /** Installments */
+            installments?: number | null;
+            /** Remaining Installments */
+            remaining_installments?: number | null;
             /** Category Id */
             category_id?: string | null;
             /** Merchant */
@@ -612,6 +990,204 @@ export interface components {
             merchant?: string | null;
             /** Notes */
             notes?: string | null;
+        };
+        /** InstallmentPlanIn */
+        InstallmentPlanIn: {
+            /** Installments */
+            installments: number;
+            /**
+             * Installment Amount
+             * @example 42.50
+             */
+            installment_amount: string;
+        };
+        /**
+         * InvoiceAdjustmentOut
+         * @description Linha sem item próprio: crédito da fatura anterior ou valor levado adiante/parcelado.
+         */
+        InvoiceAdjustmentOut: {
+            /** Description */
+            description: string;
+            /**
+             * Amount
+             * @example 42.50
+             */
+            amount: string;
+        };
+        /** InvoiceDetailOut */
+        InvoiceDetailOut: {
+            invoice: components["schemas"]["InvoiceSummaryOut"];
+            /** Items */
+            items: components["schemas"]["InvoiceItemOut"][];
+            /** Adjustments */
+            adjustments: components["schemas"]["InvoiceAdjustmentOut"][];
+            /** Payments */
+            payments: components["schemas"]["TransactionOut"][];
+        };
+        /** InvoiceImpactOut */
+        InvoiceImpactOut: {
+            /**
+             * Reference Month
+             * Format: date
+             */
+            reference_month: string;
+            /**
+             * Before
+             * @example 42.50
+             */
+            before: string;
+            /**
+             * After
+             * @example 42.50
+             */
+            after: string;
+        };
+        /**
+         * InvoiceItemKind
+         * @enum {string}
+         */
+        InvoiceItemKind: "PURCHASE" | "CHARGE" | "REFUND_CREDIT" | "CARRYOVER" | "INVOICE_INSTALLMENT" | "OPENING_BALANCE";
+        /** InvoiceItemOut */
+        InvoiceItemOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["InvoiceItemKind"];
+            direction: components["schemas"]["ItemDirection"];
+            /**
+             * Amount
+             * @example 42.50
+             */
+            amount: string;
+            /** Description */
+            description: string;
+            /** Occurred On */
+            occurred_on: string | null;
+            /** Installment Number */
+            installment_number: number | null;
+            /** Installment Count */
+            installment_count: number | null;
+            /** Transaction Id */
+            transaction_id: string | null;
+            status: components["schemas"]["ItemStatus"];
+        };
+        /**
+         * InvoicePatch
+         * @description `reported_total: null` apaga o total informado.
+         */
+        InvoicePatch: {
+            /** Reported Total */
+            reported_total?: string | null;
+            /** Closing Date */
+            closing_date?: string | null;
+            /** Due Date */
+            due_date?: string | null;
+        };
+        /** InvoicePaymentIn */
+        InvoicePaymentIn: {
+            /**
+             * Occurred On
+             * Format: date
+             */
+            occurred_on: string;
+            /** Sources */
+            sources: components["schemas"]["PaymentSourceIn"][];
+            /**
+             * Remainder
+             * @default NONE
+             */
+            remainder: ("NONE" | "CARRY_OVER") | components["schemas"]["InstallmentPlanIn"];
+        };
+        /** InvoicePaymentOut */
+        InvoicePaymentOut: {
+            /**
+             * Group Id
+             * Format: uuid
+             */
+            group_id: string;
+            /** Payments */
+            payments: components["schemas"]["TransactionOut"][];
+            charge: components["schemas"]["TransactionOut"] | null;
+            /**
+             * Replayed
+             * @default false
+             */
+            replayed: boolean;
+            /** Warnings */
+            warnings?: components["schemas"]["NoticeOut"][];
+        };
+        /**
+         * InvoiceState
+         * @enum {string}
+         */
+        InvoiceState: "FUTURE" | "OPEN" | "CLOSED" | "PAID";
+        /**
+         * InvoiceSummaryOut
+         * @description `id` nulo: fatura aberta ainda sem nenhum item (as datas vêm do ciclo do cartão).
+         */
+        InvoiceSummaryOut: {
+            /** Id */
+            id: string | null;
+            /**
+             * Reference Month
+             * Format: date
+             */
+            reference_month: string;
+            /**
+             * Closing Date
+             * Format: date
+             */
+            closing_date: string;
+            /**
+             * Due Date
+             * Format: date
+             */
+            due_date: string;
+            state: components["schemas"]["InvoiceState"];
+            /**
+             * Total
+             * @example 42.50
+             */
+            total: string;
+            /**
+             * Balance
+             * @example 42.50
+             */
+            balance: string;
+            /** Reported Total */
+            reported_total: string | null;
+            /** Difference */
+            difference: string | null;
+        };
+        /**
+         * ItemDirection
+         * @enum {string}
+         */
+        ItemDirection: "DEBIT" | "CREDIT";
+        /**
+         * ItemStatus
+         * @enum {string}
+         */
+        ItemStatus: "ACTIVE" | "CANCELLED";
+        /** LimitOut */
+        LimitOut: {
+            /**
+             * Limit
+             * @example 42.50
+             */
+            limit: string;
+            /**
+             * Used
+             * @example 42.50
+             */
+            used: string;
+            /**
+             * Available
+             * @example 42.50
+             */
+            available: string;
         };
         /** LoginIn */
         LoginIn: {
@@ -657,20 +1233,87 @@ export interface components {
             detail: string;
         };
         /**
+         * OpeningTotalIn
+         * @description Total da fatura aberta no início do cartão; zero apaga.
+         */
+        OpeningTotalIn: {
+            /**
+             * Amount
+             * @example 42.50
+             */
+            amount: string;
+        };
+        /** PaymentGroupVoidOut */
+        PaymentGroupVoidOut: {
+            /**
+             * Group Id
+             * Format: uuid
+             */
+            group_id: string;
+            /** Payments */
+            payments: components["schemas"]["TransactionOut"][];
+        };
+        /**
          * PaymentMethod
          * @enum {string}
          */
-        PaymentMethod: "PIX" | "DEBIT" | "CASH" | "BOLETO" | "OTHER";
-        /** PaymentOptionOut */
+        PaymentMethod: "PIX" | "DEBIT" | "CASH" | "BOLETO" | "OTHER" | "CREDIT";
+        /**
+         * PaymentOptionOut
+         * @description Atalho de pagamento: conta + meio, ou cartão (`card_id`, meio `CREDIT`).
+         */
         PaymentOptionOut: {
+            /** Account Id */
+            account_id: string | null;
+            /** Card Id */
+            card_id: string | null;
+            /** Name */
+            name: string;
+            payment_method: components["schemas"]["PaymentMethod"];
+        };
+        /** PaymentSourceIn */
+        PaymentSourceIn: {
             /**
              * Account Id
              * Format: uuid
              */
             account_id: string;
-            /** Account Name */
-            account_name: string;
-            payment_method: components["schemas"]["PaymentMethod"];
+            /**
+             * Amount
+             * @example 42.50
+             */
+            amount: string;
+        };
+        /** PreviewIn */
+        PreviewIn: {
+            /**
+             * Amount
+             * @example 42.50
+             */
+            amount: string;
+            /** Installments */
+            installments?: number | null;
+            /**
+             * Occurred On
+             * Format: date
+             */
+            occurred_on: string;
+        };
+        /** PreviewOut */
+        PreviewOut: {
+            invoice: components["schemas"]["InvoiceImpactOut"];
+            /** Following */
+            following: components["schemas"]["InvoiceImpactOut"][];
+            /**
+             * Limit Before
+             * @example 42.50
+             */
+            limit_before: string;
+            /**
+             * Limit After
+             * @example 42.50
+             */
+            limit_after: string;
         };
         /** RefundIn */
         RefundIn: {
@@ -715,16 +1358,23 @@ export interface components {
             merchant_id: string | null;
             /** Category Id */
             category_id: string | null;
-            /**
-             * Account Id
-             * Format: uuid
-             */
-            account_id: string;
+            /** Account Id */
+            account_id: string | null;
             /** Destination Account Id */
             destination_account_id: string | null;
             payment_method: components["schemas"]["PaymentMethod"] | null;
             /** Refund Of Id */
             refund_of_id: string | null;
+            /** Card Id */
+            card_id: string | null;
+            /** Installments */
+            installments: number | null;
+            /** Remaining Installments */
+            remaining_installments: number | null;
+            /** Invoice Id */
+            invoice_id: string | null;
+            /** Payment Group Id */
+            payment_group_id: string | null;
             status: components["schemas"]["TransactionStatus"];
             source: components["schemas"]["TransactionSource"];
             /**
@@ -734,6 +1384,11 @@ export interface components {
             created_at: string;
             /** Voided At */
             voided_at: string | null;
+            /**
+             * Installment Amount
+             * @description Valor de cada parcela (as demais; a primeira leva a sobra dos centavos).
+             */
+            readonly installment_amount: string | null;
         };
         /** TransactionPage */
         TransactionPage: {
@@ -764,6 +1419,10 @@ export interface components {
             /** Destination Account Id */
             destination_account_id?: string | null;
             payment_method?: components["schemas"]["PaymentMethod"] | null;
+            /** Installments */
+            installments?: number | null;
+            /** Card Id */
+            card_id?: string | null;
         };
         /**
          * TransactionSource
@@ -779,7 +1438,7 @@ export interface components {
          * TransactionType
          * @enum {string}
          */
-        TransactionType: "INCOME" | "EXPENSE" | "TRANSFER" | "REFUND";
+        TransactionType: "INCOME" | "EXPENSE" | "TRANSFER" | "REFUND" | "INVOICE_PAYMENT" | "CHARGE";
         /** TransactionWriteOut */
         TransactionWriteOut: {
             transaction: components["schemas"]["TransactionOut"];
@@ -1111,6 +1770,464 @@ export interface operations {
             };
         };
     };
+    list_cards_api_v1_cards_get: {
+        parameters: {
+            query?: {
+                include_archived?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_card_api_v1_cards_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CardIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    card_cycle_api_v1_cards_cycle_get: {
+        parameters: {
+            query: {
+                closing_day: number;
+                due_day: number;
+                opening_date?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CycleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cards_summary_api_v1_cards_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardSummaryOut"][];
+                };
+            };
+        };
+    };
+    update_card_api_v1_cards__card_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                card_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CardPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_opening_total_api_v1_cards__card_id__opening_total_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                card_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpeningTotalIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardSummaryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_card_api_v1_cards__card_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                card_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardArchiveOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    card_invoices_api_v1_cards__card_id__invoices_get: {
+        parameters: {
+            query?: {
+                before?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                card_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardInvoicesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_charge_api_v1_cards__card_id__charges_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                card_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChargeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionWriteOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_purchase_api_v1_cards__card_id__preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                card_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreviewIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_invoice_api_v1_invoices__invoice_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_invoice_api_v1_invoices__invoice_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceSummaryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pay_invoice_api_v1_invoices__invoice_id__payments_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicePaymentIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicePaymentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    void_payment_group_api_v1_payment_groups__group_id__void_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentGroupVoidOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_categories_api_v1_categories_get: {
         parameters: {
             query?: {
@@ -1279,6 +2396,7 @@ export interface operations {
                 date_from?: string | null;
                 date_to?: string | null;
                 account_id?: string | null;
+                card_id?: string | null;
                 category_id?: string | null;
                 merchant_id?: string | null;
                 payment_method?: components["schemas"]["PaymentMethod"] | null;

@@ -29,12 +29,17 @@ export function RefundDialog({ expense, onDone, onCancel }: Props) {
   const keyFor = useIdempotencyKey()
   const [amount, setAmount] = useState(toInputAmount(expense.amount))
   const [date, setDate] = useState<string | null>(null)
-  const [account, setAccount] = useState(expense.account_id)
+  const [account, setAccount] = useState(expense.account_id ?? '')
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [detail, setDetail] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const occurredOn = date ?? hints.data?.today ?? ''
   const accounts = hints.data?.accounts ?? []
+  // No cartão, o estorno vira crédito na fatura: não há conta para escolher.
+  const cardName =
+    expense.card_id !== null
+      ? (hints.data?.cards.find((c) => c.id === expense.card_id)?.name ?? 'cartão')
+      : null
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -48,7 +53,11 @@ export function RefundDialog({ expense, onDone, onCancel }: Props) {
     setErrors(local)
     if (Object.keys(local).length > 0 || parsed === null) return
 
-    const body: RefundIn = { amount: parsed, occurred_on: occurredOn, account_id: account }
+    const body: RefundIn = {
+      amount: parsed,
+      occurred_on: occurredOn,
+      ...(cardName === null ? { account_id: account } : {}),
+    }
     setSaving(true)
     try {
       const result = await api.refund(expense.id, body, keyFor(body))
@@ -87,25 +96,30 @@ export function RefundDialog({ expense, onDone, onCancel }: Props) {
             className={inputClass}
           />
         </Field>
-        <Field id={`${id}-account`} label="Devolvido em" error={errors.account_id}>
-          <select
-            id={`${id}-account`}
-            value={account}
-            onChange={(e) => setAccount(e.target.value)}
-            {...invalid(`${id}-account`, errors.account_id)}
-            className={inputClass}
-          >
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-            {!accounts.some((a) => a.id === expense.account_id) && (
-              <option value={expense.account_id}>Conta arquivada</option>
-            )}
-          </select>
-        </Field>
+        {cardName === null && (
+          <Field id={`${id}-account`} label="Devolvido em" error={errors.account_id}>
+            <select
+              id={`${id}-account`}
+              value={account}
+              onChange={(e) => setAccount(e.target.value)}
+              {...invalid(`${id}-account`, errors.account_id)}
+              className={inputClass}
+            >
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+              {expense.account_id !== null && !accounts.some((a) => a.id === expense.account_id) && (
+                <option value={expense.account_id}>Conta arquivada</option>
+              )}
+            </select>
+          </Field>
+        )}
       </div>
+      {cardName !== null && (
+        <p className="text-sm text-ink-soft">O valor volta como crédito na fatura do {cardName}.</p>
+      )}
       {detail && (
         <p role="alert" className={errorTextClass}>
           {detail}

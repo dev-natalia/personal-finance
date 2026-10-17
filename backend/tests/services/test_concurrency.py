@@ -17,10 +17,16 @@ from sqlalchemy import Engine, delete, select
 from sqlalchemy.orm import Session
 
 from app.domain.dates import FixedClock
-from app.models import Actor, PaymentMethod, User
-from app.services import accounts, transactions
+from app.models import Actor, Invoice, PaymentMethod, User
+from app.services import accounts, cards, transactions
 from app.services.context import RequestContext
-from app.services.transactions import NewExpense, NewRefund, WriteResult
+from app.services.invoice_payments import (
+    NewInvoicePayment,
+    PaymentResult,
+    PaymentSource,
+    pay_invoice,
+)
+from app.services.transactions import NewCardExpense, NewExpense, NewRefund, WriteResult
 from tests.support import FIXED_NOW, PASSWORD
 
 HOLD_SECONDS = 0.5
@@ -59,14 +65,14 @@ def committed(engine: Engine) -> Iterator[Setup]:
         conn.execute(delete(User).where(User.id == ctx.user_id))
 
 
-def _race(
+def _race[R](
     engine: Engine,
-    first: Callable[[Session], WriteResult],
-    second: Callable[[Session], WriteResult],
-) -> tuple[WriteResult, WriteResult | BaseException]:
+    first: Callable[[Session], R],
+    second: Callable[[Session], R],
+) -> tuple[R, R | BaseException]:
     """`first` grava e segura o commit; `second` começa enquanto o primeiro ainda não confirmou."""
     inserted = threading.Event()
-    outcome: dict[str, WriteResult | BaseException] = {}
+    outcome: dict[str, R | BaseException] = {}
 
     def run_first() -> None:
         with Session(engine, expire_on_commit=False) as session:
@@ -90,7 +96,7 @@ def _race(
     for thread in threads:
         thread.join(timeout=30)
     result = outcome["first"]
-    assert isinstance(result, WriteResult)
+    assert not isinstance(result, BaseException), repr(result)
     return result, outcome["second"]
 
 
@@ -188,3 +194,41 @@ def test_parallel_wrong_passwords_cannot_bypass_login_limit(engine: Engine) -> N
         with engine.begin() as conn:
             conn.execute(delete(LoginAttempt).where(LoginAttempt.email_normalized == email))
             conn.execute(delete(User).where(User.id == user_id))
+
+
+def test_double_click_on_invoice_payment_replays(engine: Engine, committed: Setup) -> None:
+    with Session(engine, expire_on_commit=False) as session:
+        card = cards.create_card(
+            session,
+            committed.ctx,
+            name="Nubank",
+            credit_limit=Decimal("5000.00"),
+            closing_day=3,
+            due_day=10,
+            opening_date=date(2026, 9, 1),
+        )
+        transactions.create_transaction(
+            session,
+            committed.ctx,
+            NewCardExpense(
+                amount=Decimal("300.00"),
+                occurred_on=date(2026, 9, 20),
+                description="compra",
+                card_id=card.id,
+            ),
+        )
+        invoice_id = session.scalars(select(Invoice.id).where(Invoice.card_id == card.id)).one()
+        session.commit()
+    data = NewInvoicePayment(
+        occurred_on=date(2026, 10, 15),
+        sources=(PaymentSource(committed.account_id, Decimal("300.00")),),
+    )
+
+    def pay(session: Session) -> PaymentResult:
+        return pay_invoice(session, committed.ctx, invoice_id, data, idempotency_key="pagar-0001")
+
+    first, second = _race(engine, pay, pay)
+    assert isinstance(second, PaymentResult), repr(second)
+    assert second.replayed
+    assert second.group_id == first.group_id
+    assert [p.id for p in second.payments] == [p.id for p in first.payments]

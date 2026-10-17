@@ -5,6 +5,7 @@ import { ApiError } from '../../api/client'
 import { type TransactionQuery, api } from '../../api/endpoints'
 import {
   useAccounts,
+  useCards,
   useCategories,
   useEntryHints,
   useInvalidateLedger,
@@ -25,24 +26,21 @@ import {
   secondaryButtonClass,
 } from '../../ui/styles'
 import { TransactionForm } from '../form/TransactionForm'
-import { LedgerAmount, ledgerDetail } from '../home/Timeline'
+import { LedgerAmount, type LedgerNames, ledgerDetail } from '../home/Timeline'
 import { RefundDialog } from './RefundDialog'
 
-type Filter = 'date_from' | 'date_to' | 'account_id' | 'category_id' | 'type' | 'status'
+type Filter = 'date_from' | 'date_to' | 'account_id' | 'card_id' | 'category_id' | 'type' | 'status'
 
 const TYPES = Object.entries(TRANSACTION_TYPE_LABELS) as [TransactionOut['type'], string][]
 const textButton = 'min-h-11 px-2 text-sm text-pen underline-offset-2 hover:underline'
 
-interface Names {
-  accounts: Map<string, string>
-  categories: Map<string, string>
-}
 
 /** `/lancamentos`: livro-caixa com filtros na URL, edição, anulação e estorno. */
 export function TransactionsPage() {
   const [search, setSearch] = useSearchParams()
   const hints = useEntryHints()
   const accounts = useAccounts(true)
+  const cards = useCards(true)
   const categories = useCategories()
   const { announce, status } = useStatus()
 
@@ -51,6 +49,7 @@ export function TransactionsPage() {
     date_from: filter('date_from') || undefined,
     date_to: filter('date_to') || undefined,
     account_id: filter('account_id') || undefined,
+    card_id: filter('card_id') || undefined,
     category_id: filter('category_id') || undefined,
     type: (filter('type') || undefined) as TransactionQuery['type'],
     status: (filter('status') || undefined) as TransactionQuery['status'],
@@ -69,9 +68,10 @@ export function TransactionsPage() {
     )
   }
 
-  const names: Names = {
+  const names: LedgerNames = {
     accounts: new Map((accounts.data ?? []).map((a) => [a.id, a.name])),
     categories: new Map((categories.data ?? []).map((c) => [c.id, c.name])),
+    cards: new Map((cards.data ?? []).map((c) => [c.id, c.name])),
   }
   const items = (list.data?.pages ?? []).flatMap((page) => page.items)
   const days = new Map<string, TransactionOut[]>()
@@ -86,6 +86,11 @@ export function TransactionsPage() {
           accounts: (accounts.data ?? []).map((a) => (
             <option key={a.id} value={a.id}>
               {a.archived_at ? `${a.name} (arquivada)` : a.name}
+            </option>
+          )),
+          cards: (cards.data ?? []).map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.archived_at ? `${c.name} (arquivado)` : c.name}
             </option>
           )),
           categories: (
@@ -154,7 +159,7 @@ function Filters({
 }: {
   filter: (name: Filter) => string
   setFilter: (name: Filter, value: string) => void
-  children: { accounts: ReactNode; categories: ReactNode }
+  children: { accounts: ReactNode; cards: ReactNode; categories: ReactNode }
 }) {
   const id = useId()
   const select = (name: Filter, label: string, options: ReactNode, all = 'Todas') => (
@@ -189,6 +194,7 @@ function Filters({
       {date('date_from', 'De')}
       {date('date_to', 'Até')}
       {select('account_id', 'Conta', children.accounts)}
+      {select('card_id', 'Cartão', children.cards, 'Todos')}
       {select('category_id', 'Categoria', children.categories)}
       {select(
         'type',
@@ -222,7 +228,7 @@ function TransactionRow({
   onMessage,
 }: {
   tx: TransactionOut
-  names: Names
+  names: LedgerNames
   onMessage: Announce
 }) {
   const [mode, setMode] = useState<'view' | 'edit' | 'void' | 'refund'>('view')
@@ -268,7 +274,7 @@ function TransactionRow({
         <p className={`truncate ${voided ? 'text-ink-soft line-through' : ''}`}>{tx.description}</p>
         <p className="text-[13px] text-ink-soft">
           {voided && <span className="mr-1 font-semibold text-stamp">Anulado</span>}
-          {ledgerDetail(tx, names.accounts, names.categories)}
+          {ledgerDetail(tx, names)}
         </p>
       </div>
       <span className={voided ? 'line-through opacity-60' : ''}>
@@ -277,15 +283,18 @@ function TransactionRow({
 
       {!voided && mode === 'view' && (
         <div className="-ml-2 flex w-full gap-1">
-          <button
-            ref={editRef}
-            type="button"
-            aria-label={`Editar ${tx.description}`}
-            onClick={() => setMode('edit')}
-            className={textButton}
-          >
-            Editar
-          </button>
+          {/* Pagamento de fatura se corrige anulando o pagamento (na tela do cartão ou aqui). */}
+          {tx.type !== 'INVOICE_PAYMENT' && (
+            <button
+              ref={editRef}
+              type="button"
+              aria-label={`Editar ${tx.description}`}
+              onClick={() => setMode('edit')}
+              className={textButton}
+            >
+              Editar
+            </button>
+          )}
           <button
             type="button"
             aria-label={`Anular ${tx.description}`}

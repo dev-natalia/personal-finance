@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router'
 import { AccountsPage } from './features/accounts/AccountsPage'
 import { LoginPage } from './features/auth/LoginPage'
 import { RequireAuth } from './features/auth/RequireAuth'
+import { CardPage } from './features/cards/CardPage'
 import { useUnauthenticatedRedirect } from './features/auth/useUnauthenticatedRedirect'
 import { CategoriesPage } from './features/categories/CategoriesPage'
 import { FullFormPage } from './features/form/FullFormPage'
@@ -27,6 +28,7 @@ export function AppRoutes() {
         <Route path="lancamentos" element={<TransactionsPage />} />
         <Route path="lancamentos/novo" element={<FullFormPage />} />
         <Route path="contas" element={<AccountsPage />} />
+        <Route path="cartoes/:id" element={<CardPage />} />
         <Route path="mais" element={<MorePage />} />
         <Route path="mais/categorias" element={<CategoriesPage />} />
       </Route>

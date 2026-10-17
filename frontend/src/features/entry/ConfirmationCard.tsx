@@ -1,9 +1,12 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 
 import { ApiError } from '../../api/client'
 import { api } from '../../api/endpoints'
-import { useCategories, useInvalidateLedger } from '../../api/queries'
-import type { EntryHintsOut } from '../../api/types'
+import { queryKeys, useCategories, useInvalidateLedger } from '../../api/queries'
+import type { EntryHintsOut, PurchasePreviewOut } from '../../api/types'
+import { monthName } from '../../domain/dates'
+import { formatBRL } from '../../domain/money'
 import type { ParsedItem } from '../../domain/parser'
 import { primaryButtonClass, secondaryButtonClass, slipClass } from '../../ui/styles'
 import {
@@ -13,6 +16,7 @@ import {
   cardReducer,
   initCard,
   prepareSend,
+  previewInput,
 } from './cardState'
 import { type Names, type SavedEntry, describeSaved } from './describe'
 import { ItemEditor } from './ItemEditor'
@@ -38,14 +42,28 @@ export function ConfirmationCard({ parsed, hints, onSaved, onClose }: Props) {
   const [busy, setBusy] = useState(false)
   const categories = useCategories()
   const invalidateLedger = useInvalidateLedger()
+  const queryClient = useQueryClient()
+
+  /** " Fatura de novembro: R$ 1.440,00." — o "depois" da última prévia mostrada no item. */
+  function invoiceLine(item: CardItem): string {
+    const input = previewInput(item)
+    if (!input) return ''
+    const preview = queryClient.getQueryData<PurchasePreviewOut>(
+      queryKeys.preview(input.cardId, input.body),
+    )
+    if (!preview) return ''
+    const { reference_month: month, after } = preview.invoice
+    return ` Fatura de ${monthName(month)}: ${formatBRL(after)}.`
+  }
   const headingRef = useRef<HTMLHeadingElement>(null)
 
   const names: Names = useMemo(
     () => ({
       accounts: new Map(hints.accounts.map((a) => [a.id, a.name])),
       categories: new Map((categories.data ?? []).map((c) => [c.id, c.name])),
+      cards: new Map(hints.cards.map((c) => [c.id, c.name])),
     }),
-    [hints.accounts, categories.data],
+    [hints.accounts, hints.cards, categories.data],
   )
 
   useEffect(() => headingRef.current?.focus(), [])
@@ -94,7 +112,7 @@ export function ConfirmationCard({ parsed, hints, onSaved, onClose }: Props) {
       try {
         const result = await api.createTransaction(body, key)
         const entry = {
-          line: describeSaved(result.transaction, names),
+          line: describeSaved(result.transaction, names) + invoiceLine(item),
           warnings: (result.warnings ?? []).map((w) => w.detail),
         }
         dispatch({ type: 'saved', index, ...entry })

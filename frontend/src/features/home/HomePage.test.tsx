@@ -8,7 +8,17 @@ import { UNAUTHENTICATED_EVENT } from '../../api/client'
 import type { TransactionOut } from '../../api/types'
 import { AppRoutes } from '../../routes'
 import { expectNoA11yViolations } from '../../test/axe'
-import { ACCOUNTS, BALANCES, CATEGORIES, HINTS, TODAY, USER, transaction } from '../../test/fixtures'
+import {
+  ACCOUNTS,
+  BALANCES,
+  CARDS,
+  CARDS_SUMMARY,
+  CATEGORIES,
+  HINTS,
+  TODAY,
+  USER,
+  transaction,
+} from '../../test/fixtures'
 import { renderWithProviders } from '../../test/render'
 import { server } from '../../test/server'
 
@@ -36,6 +46,7 @@ function mockHome(items: TransactionOut[] = []) {
       session.signedIn ? HttpResponse.json({ items, next_cursor: null }) : unauthenticated(),
     ),
     http.get('/api/v1/categories', () => HttpResponse.json(CATEGORIES)),
+    http.get('/api/v1/cards/summary', () => HttpResponse.json(CARDS_SUMMARY)),
     http.get('/api/v1/merchants', () => HttpResponse.json([])),
     http.post('/api/v1/entry-checks', () => HttpResponse.json({ results: [] })),
   )
@@ -285,4 +296,61 @@ test('full form returns home with the confirmation line', async () => {
     await screen.findByText('Transferência registrada: R$ 300,00 de Itaú para Nubank.'),
   ).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: 'Início' })).toBeInTheDocument()
+})
+
+test('home shows open invoice line per card', async () => {
+  mockHome()
+  renderWithProviders(<AppRoutes />, { route: '/' })
+  const line = await screen.findByRole('link', { name: 'Fatura aberta Nubank R$ 1.240,00' })
+  expect(line).toHaveAttribute('href', `/cartoes/${CARDS.nubank.id}`)
+})
+
+test('ledger detail describes card purchases and invoice payments', async () => {
+  mockHome([
+    transaction({
+      description: 'celular',
+      amount: '1200.00',
+      account_id: null,
+      payment_method: null,
+      card_id: CARDS.nubank.id,
+      installments: 6,
+    }),
+    transaction({
+      description: 'notebook',
+      amount: '6000.00',
+      category_id: null,
+      account_id: null,
+      payment_method: null,
+      card_id: CARDS.nubank.id,
+      installments: 10,
+      remaining_installments: 5,
+    }),
+    transaction({
+      type: 'INVOICE_PAYMENT',
+      description: 'Pagamento da fatura de outubro (Nubank)',
+      amount: '2300.00',
+      category_id: null,
+      merchant_id: null,
+      payment_method: null,
+      invoice_id: 'inv-outubro',
+      payment_group_id: 'grupo-1',
+    }),
+    transaction({
+      type: 'CHARGE',
+      description: 'IOF',
+      amount: '15.00',
+      category_id: null,
+      merchant_id: null,
+      account_id: null,
+      payment_method: null,
+      card_id: CARDS.nubank.id,
+    }),
+  ])
+  renderWithProviders(<AppRoutes />, { route: '/' })
+  expect(await screen.findByText('Mercado, crédito Nubank em 6x')).toBeInTheDocument()
+  expect(screen.getByText('A classificar, crédito Nubank em 10x, já em andamento')).toBeInTheDocument()
+  expect(screen.getByText('Pagamento de fatura, Itaú')).toBeInTheDocument()
+  expect(screen.getByText('−2.300,00')).toBeInTheDocument()
+  expect(screen.getByText('Encargos financeiros, Nubank')).toBeInTheDocument()
+  expect(screen.getByText('−15,00')).toBeInTheDocument()
 })

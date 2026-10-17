@@ -11,7 +11,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import and_, case, func, or_, select, union_all
 from sqlalchemy.orm import Session
 
 from app.domain.dates import month_range
@@ -20,7 +20,11 @@ from app.domain.merchants import normalize
 from app.domain.money import quantize
 from app.models import (
     Account,
+    Card,
     Category,
+    InvoiceItem,
+    InvoiceItemKind,
+    ItemStatus,
     Merchant,
     PaymentMethod,
     Transaction,
@@ -102,9 +106,17 @@ class MonthSummary:
 
 
 def month_summary(session: Session, user_id: UUID, year: int, month: int) -> MonthSummary:
-    """Receitas e consumo do mês. Consumo = despesas - estornos (pela data de cada lançamento).
+    """Receitas e consumo do mês, por categoria (só lançamentos confirmados).
 
-    Transferências nunca entram em receitas nem em consumo.
+    Consumo do mês =
+        + despesas via conta e despesas à vista no cartão, pela data
+        + parcelas ativas de compras parceladas no cartão, pelo mês de cada parcela (A3)
+        + encargos do cartão, pela data
+        − estornos via conta, pela data
+        − estornos no cartão, pela data, sem o valor das parcelas que cada um cancelou
+          (parcela cancelada já deixa de contar no seu próprio mês)
+
+    Transferências, pagamentos de fatura e saldos iniciais/levados adiante nunca entram.
     """
     start, end = month_range(year, month)
     in_month = (
@@ -112,16 +124,45 @@ def month_summary(session: Session, user_id: UUID, year: int, month: int) -> Mon
         _CONFIRMED,
         Transaction.occurred_on.between(start, end),
     )
-    signed = case(
-        (Transaction.type == TransactionType.EXPENSE, Transaction.amount),
-        else_=-Transaction.amount,
+    cancelled = (
+        select(func.coalesce(func.sum(InvoiceItem.amount), 0))
+        .where(InvoiceItem.cancelled_by_id == Transaction.id)
+        .scalar_subquery()
     )
-    total = func.sum(signed)
+    by_date = select(
+        Transaction.category_id.label("category_id"),
+        case(
+            (Transaction.type == TransactionType.REFUND, -(Transaction.amount - cancelled)),
+            else_=Transaction.amount,
+        ).label("amount"),
+    ).where(
+        *in_month,
+        or_(
+            and_(Transaction.type == TransactionType.EXPENSE, Transaction.installments.is_(None)),
+            Transaction.type.in_([TransactionType.CHARGE, TransactionType.REFUND]),
+        ),
+    )
+    installments = (
+        select(
+            Transaction.category_id.label("category_id"),
+            InvoiceItem.amount.label("amount"),
+        )
+        .select_from(InvoiceItem)
+        .join(Transaction, Transaction.id == InvoiceItem.transaction_id)
+        .where(
+            Transaction.user_id == user_id,
+            _CONFIRMED,
+            Transaction.installments.is_not(None),
+            InvoiceItem.kind == InvoiceItemKind.PURCHASE,
+            InvoiceItem.status == ItemStatus.ACTIVE,
+            InvoiceItem.consumption_month == start,
+        )
+    )
+    parts = union_all(by_date, installments).subquery()
+    total = func.sum(parts.c.amount)
     rows = session.execute(
         select(Category.id, Category.name, total)
-        .select_from(Transaction)
-        .join(Category, Category.id == Transaction.category_id)
-        .where(*in_month, Transaction.type.in_([TransactionType.EXPENSE, TransactionType.REFUND]))
+        .join(parts, parts.c.category_id == Category.id)
         .group_by(Category.id, Category.name)
         .order_by(total.desc(), Category.name)
     ).all()
@@ -145,6 +186,7 @@ class TransactionFilters:
     date_from: date | None = None
     date_to: date | None = None
     account_id: UUID | None = None
+    card_id: UUID | None = None
     category_id: UUID | None = None
     merchant_id: UUID | None = None
     payment_method: PaymentMethod | None = None
@@ -186,6 +228,8 @@ def list_transactions(
         stmt = stmt.where(Transaction.occurred_on >= filters.date_from)
     if filters.date_to is not None:
         stmt = stmt.where(Transaction.occurred_on <= filters.date_to)
+    if filters.card_id is not None:
+        stmt = stmt.where(Transaction.card_id == filters.card_id)
     if filters.account_id is not None:
         stmt = stmt.where(
             or_(
@@ -244,33 +288,46 @@ def possible_duplicates(
 
 @dataclass(frozen=True)
 class PaymentOption:
-    account_id: UUID
-    account_name: str
+    """Atalho de pagamento: conta + meio, ou cartão (meio crédito)."""
+
+    account_id: UUID | None
+    card_id: UUID | None
+    name: str
     payment_method: PaymentMethod
 
 
 def top_payment_options(
     session: Session, user_id: UUID, today: date, limit: int = 3
 ) -> list[PaymentOption]:
-    """Combinações conta + meio mais usadas em despesas dos últimos 90 dias."""
+    """Contas + meio e cartões mais usados em despesas dos últimos 90 dias."""
+    recent = (
+        Transaction.user_id == user_id,
+        _CONFIRMED,
+        Transaction.type == TransactionType.EXPENSE,
+        Transaction.occurred_on >= today - PAYMENT_HISTORY,
+    )
     uses = func.count(Transaction.id)
-    rows = session.execute(
+    by_account = session.execute(
         select(Account.id, Account.name, Transaction.payment_method, uses)
         .select_from(Transaction)
         .join(Account, Account.id == Transaction.account_id)
-        .where(
-            Transaction.user_id == user_id,
-            _CONFIRMED,
-            Transaction.type == TransactionType.EXPENSE,
-            Transaction.occurred_on >= today - PAYMENT_HISTORY,
-            Account.archived_at.is_(None),
-        )
+        .where(*recent, Account.archived_at.is_(None))
         .group_by(Account.id, Account.name, Transaction.payment_method)
-        .order_by(uses.desc(), Account.name, Transaction.payment_method)
-        .limit(limit)
     ).all()
-    return [
-        PaymentOption(account_id, name, method)
-        for account_id, name, method, _ in rows
-        if method is not None  # despesas sempre têm meio de pagamento
+    by_card = session.execute(
+        select(Card.id, Card.name, uses)
+        .select_from(Transaction)
+        .join(Card, Card.id == Transaction.card_id)
+        .where(*recent, Card.archived_at.is_(None))
+        .group_by(Card.id, Card.name)
+    ).all()
+    ranked = [
+        (count, PaymentOption(account_id, None, name, method))
+        for account_id, name, method, count in by_account
+        if method is not None  # despesas via conta sempre têm meio de pagamento
+    ] + [
+        (count, PaymentOption(None, card_id, name, PaymentMethod.CREDIT))
+        for card_id, name, count in by_card
     ]
+    ranked.sort(key=lambda pair: (-pair[0], pair[1].name, pair[1].payment_method))
+    return [option for _, option in ranked[:limit]]

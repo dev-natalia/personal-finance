@@ -23,6 +23,26 @@ function makeDate(year: number, month: number, day: number): string | null {
   return valid ? format(date) : null
 }
 
+const MONTH_NAMES = [
+  'janeiro',
+  'fevereiro',
+  'março',
+  'abril',
+  'maio',
+  'junho',
+  'julho',
+  'agosto',
+  'setembro',
+  'outubro',
+  'novembro',
+  'dezembro',
+]
+
+/** "2026-11-01" → "novembro" (para "fatura de novembro"). */
+export function monthName(iso: string): string {
+  return MONTH_NAMES[Number(iso.slice(5, 7)) - 1] ?? ''
+}
+
 export function addDays(iso: string, days: number): string {
   const [year, month, day] = parts(iso)
   return format(new Date(Date.UTC(year, month - 1, day + days)))
@@ -82,7 +102,13 @@ export function matchDate(words: string[], index: number, today: string): DateMa
 export function dayLabel(iso: string, today: string): string {
   if (iso === today) return 'Hoje'
   if (iso === addDays(today, -1)) return 'Ontem'
-  const [year, month, day] = parts(iso)
-  const short = `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}`
+  const [year] = parts(iso)
+  const short = shortDate(iso)
   return year === parts(today)[0] ? short : `${short}/${year}`
+}
+
+/** "2026-11-03" → "03/11". */
+export function shortDate(iso: string): string {
+  const [, month, day] = parts(iso)
+  return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}`
 }

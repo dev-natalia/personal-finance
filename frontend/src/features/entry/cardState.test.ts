@@ -20,6 +20,8 @@ function parsed(overrides: Partial<ParsedItem> = {}): ParsedItem {
     description: 'mercado',
     occurredOn: '2026-10-15',
     accountId: 'acc-itau',
+    cardId: null,
+    installments: null,
     paymentMethod: 'PIX',
     pending: [],
     ...overrides,
@@ -182,5 +184,42 @@ describe('toRequestBody', () => {
 
   test('refuses an incomplete item', () => {
     expect(() => toRequestBody(card(parsed({ accountId: null }))[0]!)).toThrow()
+  })
+})
+
+describe('card items', () => {
+  const onCard = parsed({
+    accountId: null,
+    cardId: 'card-nubank',
+    paymentMethod: 'CREDIT',
+    installments: 6,
+    amount: '1200.00',
+  })
+
+  test('a card item needs neither account nor method', () => {
+    const [item] = card(onCard)
+    expect(missingFields(item!)).toEqual([])
+  })
+
+  test('card item body has card and installments without account', () => {
+    const [item] = card(onCard)
+    expect(toRequestBody(item!)).toEqual({
+      type: 'EXPENSE',
+      amount: '1200.00',
+      occurred_on: '2026-10-15',
+      description: 'mercado',
+      card_id: 'card-nubank',
+      installments: 6,
+    })
+  })
+
+  test('cash card purchase omits installments', () => {
+    const [item] = card({ ...onCard, installments: null })
+    expect(toRequestBody(item!)).not.toHaveProperty('installments')
+  })
+
+  test('an account item with credit as method is incomplete', () => {
+    const [item] = card(parsed({ paymentMethod: 'CREDIT' }))
+    expect(missingFields(item!)).toEqual(['paymentMethod'])
   })
 })

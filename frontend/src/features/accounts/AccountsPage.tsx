@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { type FormEvent, useId, useRef, useState } from 'react'
+import { type FormEvent, useEffect, useId, useRef, useState } from 'react'
+import { useLocation } from 'react-router'
 
 import { ApiError, type FieldError } from '../../api/client'
 import { api } from '../../api/endpoints'
@@ -10,6 +11,7 @@ import { ACCOUNT_TYPE_LABELS } from '../../domain/labels'
 import { formatBRL, tryParseSignedMoney } from '../../domain/money'
 import { type Announce, useFocusOnReturn, useStatus } from '../../ui/focus'
 import { MoneyInput } from '../../ui/MoneyInput'
+import { CardsSection } from '../cards/CardsSection'
 import { Page } from '../../ui/Page'
 import {
   errorTextClass,
@@ -50,10 +52,11 @@ export function AccountsPage() {
   const accounts = useAccounts()
   const balances = useBalances()
   const { announce, status } = useStatus()
+  useMessageFromNavigation(announce)
   const balanceOf = new Map((balances.data?.accounts ?? []).map((b) => [b.account_id, b.balance]))
 
   return (
-    <Page title="Contas">
+    <Page title="Contas e cartões">
       {balances.data && (
         <p className="mb-2 flex items-baseline justify-between text-ink-soft">
           Total em contas
@@ -74,8 +77,21 @@ export function AccountsPage() {
         ))}
       </ul>
       <NewAccountForm onCreated={(name) => announce(`Conta ${name} criada.`)} />
+      <CardsSection onMessage={announce} />
     </Page>
   )
+}
+
+/** Mensagem deixada por outra tela ao voltar para cá (ex.: cartão arquivado, com aviso). */
+function useMessageFromNavigation(announce: Announce): void {
+  const location = useLocation()
+  const message = (location.state as { message?: unknown } | null)?.message
+  const shown = useRef(false)
+  useEffect(() => {
+    if (shown.current || typeof message !== 'string') return
+    shown.current = true
+    announce(message, { focus: true })
+  }, [announce, message])
 }
 
 function AccountRow({

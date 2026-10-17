@@ -17,16 +17,27 @@ class EntryAccountOut(BaseModel):
 
 
 class PaymentOptionOut(BaseModel):
+    """Atalho de pagamento: conta + meio, ou cartão (`card_id`, meio `CREDIT`)."""
+
     model_config = ConfigDict(from_attributes=True)
 
-    account_id: UUID
-    account_name: str
+    account_id: UUID | None
+    card_id: UUID | None
+    name: str
     payment_method: PaymentMethod
+
+
+class EntryCardOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
 
 
 class EntryHintsOut(BaseModel):
     today: date
     accounts: list[EntryAccountOut]
+    cards: list[EntryCardOut]
     payment_methods: list[PaymentMethod]
     top_payment_options: list[PaymentOptionOut]
 

@@ -67,6 +67,18 @@ def get_unclassified(session: Session, user_id: UUID, kind: CategoryKind) -> Cat
     ).one()
 
 
+def get_financial_charges(session: Session, user_id: UUID) -> Category:
+    """Categoria de sistema dos juros, multas e IOF do cartão."""
+    return session.scalars(
+        select(Category).where(
+            Category.user_id == user_id,
+            Category.kind == CategoryKind.EXPENSE,
+            Category.is_system.is_(True),
+            Category.name == FINANCIAL_CHARGES,
+        )
+    ).one()
+
+
 def list_categories(
     session: Session,
     ctx: RequestContext,

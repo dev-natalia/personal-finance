@@ -90,10 +90,11 @@ Data-alvo padrão: próxima receita prevista. Sempre acompanhado, separadamente,
 ## 7. Subprojetos (ordem)
 
 1. **Fundação e lançamentos** — auth, contas, categorias, transações via conta, idempotência, auditoria, tela inicial em formato de conversa com interpretador simples. Spec: `2026-10-15-fundacao-e-lancamentos-design.md`.
-2. **Cartões e faturas** — ciclo, parcelamento, encargos, pagamento total/parcial, limite.
-3. **Assistente de IA (registro)** — provedor, ferramentas, ações pendentes, chat persistido.
-4. **Planejamento** — recorrências versionadas, orçamentos, dívidas.
-5. **Posição financeira e decisão** — disponível, compromissos, simulação, regras da usuária.
-6. **Painel e PWA completo** — indicadores, gráficos, refinamentos.
+2. **Cartões e faturas** — ciclo, parcelamento, encargos, pagamento total/parcial, limite. Spec: `2026-10-16-cartoes-e-faturas-design.md`.
+3. **Análise** — gráficos de gasto por categoria e por dia, total por estabelecimento por semana/mês/ano com filtros. (Puxado do Painel por pedido da usuária em 2026-10-16.)
+4. **Assistente de IA (registro)** — provedor, ferramentas, ações pendentes, chat persistido.
+5. **Planejamento** — recorrências versionadas, orçamentos, dívidas.
+6. **Posição financeira e decisão** — disponível, compromissos, simulação, regras da usuária.
+7. **Painel e PWA completo** — indicadores restantes, refinamentos.
 
 Fora do MVP: Open Finance, conexão com bancos, pagamentos, investimentos, previsões por ML, apps nativos. Importação CSV/OFX após o MVP.

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.models import (
     Account,
     AccountType,
+    Card,
     Category,
     CategoryKind,
     Merchant,
@@ -17,7 +18,7 @@ from app.models import (
     TransactionStatus,
     TransactionType,
 )
-from app.services import accounts
+from app.services import accounts, cards
 from app.services.auth import SessionPolicy
 from app.services.context import RequestContext
 
@@ -40,6 +41,26 @@ def make_account(
         name=name,
         account_type=account_type,
         opening_balance=Decimal(opening_balance),
+        opening_date=opening_date,
+    )
+
+
+def make_card(
+    db: Session,
+    ctx: RequestContext,
+    name: str = "Nubank",
+    credit_limit: str = "11000.00",
+    closing_day: int = 3,
+    due_day: int = 10,
+    opening_date: date = date(2026, 10, 1),
+) -> Card:
+    return cards.create_card(
+        db,
+        ctx,
+        name=name,
+        credit_limit=Decimal(credit_limit),
+        closing_day=closing_day,
+        due_day=due_day,
         opening_date=opening_date,
     )
 

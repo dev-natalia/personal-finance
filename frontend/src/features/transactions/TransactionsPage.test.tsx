@@ -6,7 +6,7 @@ import { expect, test } from 'vitest'
 
 import type { TransactionOut } from '../../api/types'
 import { expectNoA11yViolations } from '../../test/axe'
-import { ACCOUNTS, CATEGORIES, HINTS, TODAY, transaction } from '../../test/fixtures'
+import { ACCOUNTS, CARDS, CATEGORIES, HINTS, TODAY, transaction } from '../../test/fixtures'
 import { renderWithProviders } from '../../test/render'
 import { server } from '../../test/server'
 import { TransactionsPage } from './TransactionsPage'
@@ -58,6 +58,18 @@ function mockTransactions(): Captured {
           archived_at: null,
         })),
       ),
+    ),
+    http.get('/api/v1/cards', () =>
+      HttpResponse.json([
+        {
+          ...CARDS.nubank,
+          credit_limit: '11000.00',
+          closing_day: 3,
+          due_day: 10,
+          opening_date: '2026-09-01',
+          archived_at: null,
+        },
+      ]),
     ),
     http.get('/api/v1/accounts/balances', () =>
       HttpResponse.json({ as_of: TODAY, total: '0.00', accounts: [] }),
@@ -255,4 +267,63 @@ test('voiding moves focus to the result message', async () => {
   const status = await screen.findByRole('status')
   expect(status).toHaveTextContent('Lançamento anulado.')
   await waitFor(() => expect(status).toHaveFocus())
+})
+
+test('transactions filter by card', async () => {
+  const captured = mockTransactions()
+  const { user } = renderPage()
+  const card = await screen.findByLabelText('Cartão')
+  await within(card).findByRole('option', { name: 'Nubank' })
+  await user.selectOptions(card, 'Nubank')
+  await waitFor(() => expect(lastQuery(captured).get('card_id')).toBe(CARDS.nubank.id))
+  expect(screen.getByTestId('search')).toHaveTextContent(`card_id=${CARDS.nubank.id}`)
+})
+
+test('card refund has no account field', async () => {
+  const captured = mockTransactions()
+  const celular = transaction({
+    id: 'tx-celular',
+    description: 'celular',
+    amount: '1200.00',
+    account_id: null,
+    payment_method: null,
+    card_id: CARDS.nubank.id,
+    installments: 6,
+  })
+  server.use(
+    http.get('/api/v1/transactions', () => HttpResponse.json({ items: [celular], next_cursor: null })),
+  )
+  const { user } = renderPage()
+  expect(await screen.findByText('Mercado, crédito Nubank em 6x')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Estornar celular' }))
+  const form = screen.getByRole('form', { name: 'Estornar celular' })
+  expect(within(form).queryByLabelText('Devolvido em')).not.toBeInTheDocument()
+  expect(within(form).getByText('O valor volta como crédito na fatura do Nubank.')).toBeInTheDocument()
+  await user.clear(within(form).getByLabelText('Valor'))
+  await user.type(within(form).getByLabelText('Valor'), '200')
+  await user.click(within(form).getByRole('button', { name: 'Registrar estorno' }))
+  await waitFor(() => expect(captured.refunds).toHaveLength(1))
+  expect(captured.refunds[0]!.body).toEqual({ amount: '200.00', occurred_on: TODAY })
+})
+
+test('invoice payments are not edited from the list', async () => {
+  mockTransactions()
+  const payment = transaction({
+    id: 'tx-pagamento',
+    type: 'INVOICE_PAYMENT',
+    description: 'Pagamento da fatura de outubro (Nubank)',
+    amount: '2300.00',
+    category_id: null,
+    merchant_id: null,
+    payment_method: null,
+    invoice_id: 'inv-outubro',
+    payment_group_id: 'grupo-1',
+  })
+  server.use(
+    http.get('/api/v1/transactions', () => HttpResponse.json({ items: [payment], next_cursor: null })),
+  )
+  renderPage()
+  expect(await screen.findByText('Pagamento de fatura, Itaú')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /^Editar Pagamento/ })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Anular Pagamento da fatura de outubro (Nubank)' })).toBeInTheDocument()
 })

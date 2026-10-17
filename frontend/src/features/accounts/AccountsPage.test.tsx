@@ -5,7 +5,7 @@ import { expect, test } from 'vitest'
 
 import type { AccountOut } from '../../api/types'
 import { expectNoA11yViolations } from '../../test/axe'
-import { ACCOUNTS, BALANCES, HINTS } from '../../test/fixtures'
+import { ACCOUNTS, BALANCES, CARDS_SUMMARY, HINTS } from '../../test/fixtures'
 import { renderWithProviders } from '../../test/render'
 import { server } from '../../test/server'
 import { AccountsPage } from './AccountsPage'
@@ -27,6 +27,7 @@ function mockAccounts(): Captured {
     http.get('/api/v1/accounts/balances', () => HttpResponse.json(BALANCES)),
     http.get('/api/v1/accounts', () => HttpResponse.json(ACCOUNT_LIST)),
     http.get('/api/v1/entry-hints', () => HttpResponse.json(HINTS)),
+    http.get('/api/v1/cards/summary', () => HttpResponse.json(CARDS_SUMMARY)),
     http.post('/api/v1/accounts', async ({ request }) => {
       const body = (await request.json()) as { name: string }
       captured.created.push(body)
@@ -162,4 +163,37 @@ test('focus returns to the row after editing and to the message after archiving'
   await user.click(screen.getByRole('button', { name: 'Arquivar Itaú' }))
   await user.click(screen.getByRole('button', { name: 'Arquivar conta' }))
   await waitFor(() => expect(screen.getByRole('status')).toHaveFocus())
+})
+
+
+test('accounts page lists cards with open invoice and available limit', async () => {
+  mockAccounts()
+  const { user } = renderPage()
+  expect(await screen.findByRole('heading', { name: 'Contas e cartões' })).toBeInTheDocument()
+  const section = await screen.findByRole('region', { name: 'Cartões' })
+  const link = await within(section).findByRole('link', { name: /Nubank/ })
+  expect(link).toHaveAttribute('href', '/cartoes/card-nubank')
+  expect(within(section).getByText('Fatura aberta R$ 1.240,00')).toBeInTheDocument()
+  expect(within(section).getByText('Limite disponível R$ 1.560,00')).toBeInTheDocument()
+  expect(within(section).queryByRole('form', { name: 'Novo cartão' })).not.toBeInTheDocument()
+  await user.click(within(section).getByRole('button', { name: 'Adicionar cartão' }))
+  expect(within(section).getByRole('form', { name: 'Novo cartão' })).toBeInTheDocument()
+})
+
+test('shows the message left by the card page after archiving', async () => {
+  mockAccounts()
+  renderWithProviders(<AccountsPage />, {
+    route: { pathname: '/contas', state: { message: 'Cartão Nubank arquivado.' } },
+  })
+  expect(await screen.findByRole('status')).toHaveTextContent('Cartão Nubank arquivado.')
+})
+
+test('new card form takes the focus and gives it back on cancel', async () => {
+  mockAccounts()
+  const user = userEvent.setup()
+  renderWithProviders(<AccountsPage />, { route: '/contas' })
+  await user.click(await screen.findByRole('button', { name: 'Adicionar cartão' }))
+  expect(screen.getByLabelText('Nome do cartão')).toHaveFocus()
+  await user.click(screen.getByRole('button', { name: 'Cancelar' }))
+  expect(screen.getByRole('button', { name: 'Adicionar cartão' })).toHaveFocus()
 })

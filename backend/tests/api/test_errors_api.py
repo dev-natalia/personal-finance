@@ -65,7 +65,12 @@ def test_union_field_path_has_no_type_tag(auth_client: TestClient) -> None:
         headers={"Idempotency-Key": "sem-meio-0001"},
     )
     assert response.status_code == 422
-    assert [e["field"] for e in response.json()["errors"]] == ["payment_method"]
+    # Conta sem meio de pagamento: a regra "conta e meio, ou cartão" é do corpo inteiro, e a
+    # mensagem dela vira o detalhe (sem o nome do tipo, EXPENSE, no caminho).
+    assert [e["field"] for e in response.json()["errors"]] == ["body"]
+    assert response.json()["detail"] == (
+        "Informe a conta e o meio de pagamento, ou o cartão (não os dois)."
+    )
 
 
 def test_server_error_keeps_request_id_and_security_headers(

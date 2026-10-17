@@ -1,7 +1,9 @@
 from app.models.account import Account, AccountType
 from app.models.audit import Actor, AuditAction, AuditLog
 from app.models.base import Base, OwnedModel
+from app.models.card import Card
 from app.models.category import Category, CategoryKind
+from app.models.invoice import Invoice, InvoiceItem, InvoiceItemKind, ItemDirection, ItemStatus
 from app.models.merchant import Merchant
 from app.models.transaction import (
     PaymentMethod,
@@ -20,8 +22,14 @@ __all__ = [
     "AuditAction",
     "AuditLog",
     "Base",
+    "Card",
     "Category",
     "CategoryKind",
+    "Invoice",
+    "InvoiceItem",
+    "InvoiceItemKind",
+    "ItemDirection",
+    "ItemStatus",
     "LoginAttempt",
     "Merchant",
     "OwnedModel",

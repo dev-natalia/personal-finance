@@ -1,8 +1,10 @@
 /** Dados de exemplo para os testes de tela (formato idêntico ao da API). */
 import type {
   BalancesOut,
+  CardSummaryOut,
   CategoryOut,
   EntryHintsOut,
+  PurchasePreviewOut,
   TransactionOut,
   UserOut,
 } from '../api/types'
@@ -21,14 +23,86 @@ export const ACCOUNTS = {
   carteira: { id: 'acc-carteira', name: 'Carteira', type: 'CASH' },
 } as const
 
+export const CARDS = {
+  nubank: { id: 'card-nubank', name: 'Nubank' },
+} as const
+
 export const HINTS: EntryHintsOut = {
   today: TODAY,
   accounts: [ACCOUNTS.carteira, ACCOUNTS.itau, ACCOUNTS.nubank],
-  payment_methods: ['PIX', 'DEBIT', 'CASH', 'BOLETO', 'OTHER'],
+  cards: [CARDS.nubank],
+  payment_methods: ['PIX', 'DEBIT', 'CASH', 'BOLETO', 'OTHER', 'CREDIT'],
   top_payment_options: [
-    { account_id: ACCOUNTS.itau.id, account_name: 'Itaú', payment_method: 'PIX' },
-    { account_id: ACCOUNTS.nubank.id, account_name: 'Nubank', payment_method: 'DEBIT' },
+    { account_id: null, card_id: CARDS.nubank.id, name: 'Nubank', payment_method: 'CREDIT' },
+    { account_id: ACCOUNTS.itau.id, card_id: null, name: 'Itaú', payment_method: 'PIX' },
+    { account_id: ACCOUNTS.nubank.id, card_id: null, name: 'Nubank', payment_method: 'DEBIT' },
   ],
+}
+
+/** Resumo do Nubank (limite 11.000, fecha 3, vence 10): fatura aberta de novembro e uma
+ * fatura de outubro fechada a pagar. */
+export const CARDS_SUMMARY: CardSummaryOut[] = [
+  {
+    card: {
+      id: CARDS.nubank.id,
+      name: 'Nubank',
+      credit_limit: '11000.00',
+      closing_day: 3,
+      due_day: 10,
+      opening_date: '2026-09-01',
+      archived_at: null,
+    },
+    open_invoice: {
+      id: 'inv-novembro',
+      reference_month: '2026-11-01',
+      closing_date: '2026-11-03',
+      due_date: '2026-11-10',
+      state: 'OPEN',
+      total: '1240.00',
+      balance: '1240.00',
+      reported_total: null,
+      difference: null,
+    },
+    payable: {
+      id: 'inv-outubro',
+      reference_month: '2026-10-01',
+      closing_date: '2026-10-03',
+      due_date: '2026-10-10',
+      state: 'CLOSED',
+      total: '2300.00',
+      balance: '2300.00',
+      reported_total: null,
+      difference: null,
+    },
+    future: [
+      {
+        id: 'inv-dezembro',
+        reference_month: '2026-12-01',
+        closing_date: '2026-12-03',
+        due_date: '2026-12-10',
+        state: 'FUTURE',
+        total: '3000.00',
+        balance: '3000.00',
+        reported_total: null,
+        difference: null,
+      },
+    ],
+    limit: { limit: '11000.00', used: '9440.00', available: '1560.00' },
+  },
+]
+
+/** Prévia de "1200 celular crédito nubank 6x" sobre o resumo acima. */
+export const PREVIEW: PurchasePreviewOut = {
+  invoice: { reference_month: '2026-11-01', before: '1240.00', after: '1440.00' },
+  following: [
+    { reference_month: '2026-12-01', before: '3000.00', after: '3200.00' },
+    { reference_month: '2027-01-01', before: '0.00', after: '200.00' },
+    { reference_month: '2027-02-01', before: '0.00', after: '200.00' },
+    { reference_month: '2027-03-01', before: '0.00', after: '200.00' },
+    { reference_month: '2027-04-01', before: '0.00', after: '200.00' },
+  ],
+  limit_before: '1560.00',
+  limit_after: '360.00',
 }
 
 function category(
@@ -77,6 +151,12 @@ export function transaction(overrides: Partial<TransactionOut> = {}): Transactio
     destination_account_id: null,
     payment_method: 'PIX',
     refund_of_id: null,
+    card_id: null,
+    installments: null,
+    installment_amount: null,
+    remaining_installments: null,
+    invoice_id: null,
+    payment_group_id: null,
     status: 'CONFIRMED',
     source: 'MANUAL',
     created_at: `${TODAY}T15:00:00Z`,

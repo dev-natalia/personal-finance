@@ -65,7 +65,11 @@ export function HomePage() {
 
   function submit(value: string) {
     if (!hints.data) return
-    const parsed = parseEntry(value, { today: hints.data.today, accounts: hints.data.accounts })
+    const parsed = parseEntry(value, {
+      today: hints.data.today,
+      accounts: hints.data.accounts,
+      cards: hints.data.cards,
+    })
     if (parsed.length === 0) return
     setCard({ id: Date.now(), parsed, text: value, today: hints.data.today })
     pendingCard.current = value
@@ -77,7 +81,10 @@ export function HomePage() {
     persist(textRef.current)
   }
 
-  const accountNames = new Map((hints.data?.accounts ?? []).map((a) => [a.id, a.name]))
+  const names = {
+    accounts: new Map((hints.data?.accounts ?? []).map((a) => [a.id, a.name])),
+    cards: new Map((hints.data?.cards ?? []).map((c) => [c.id, c.name])),
+  }
 
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-2xl flex-col px-4 md:min-h-dvh">
@@ -85,7 +92,7 @@ export function HomePage() {
       <BalanceHeader />
       <div className="flex-1">
         {hints.data && (
-          <Timeline today={hints.data.today} accountNames={accountNames} sessionEntries={entries} />
+          <Timeline today={hints.data.today} names={names} sessionEntries={entries} />
         )}
       </div>
       {card && hints.data && (

@@ -7,7 +7,7 @@ import { matchDate } from './dates'
 import { isPositive, tryParseMoney } from './money'
 import { normalize } from './text'
 
-export type PaymentMethod = 'PIX' | 'DEBIT' | 'CASH' | 'BOLETO' | 'OTHER'
+export type PaymentMethod = 'PIX' | 'DEBIT' | 'CASH' | 'BOLETO' | 'OTHER' | 'CREDIT'
 export type EntryType = 'EXPENSE' | 'INCOME'
 export type PendingField = 'amount' | 'description' | 'account' | 'paymentMethod'
 
@@ -17,9 +17,15 @@ export interface EntryAccount {
   type: 'CHECKING' | 'SAVINGS' | 'CASH'
 }
 
+export interface EntryCard {
+  id: string
+  name: string
+}
+
 export interface ParseContext {
   today: string
   accounts: EntryAccount[]
+  cards: EntryCard[]
 }
 
 export interface ParsedItem {
@@ -29,6 +35,10 @@ export interface ParsedItem {
   description: string | null
   occurredOn: string
   accountId: string | null
+  /** Compra no cartão (meio `CREDIT`); nesse caso `accountId` é nulo. */
+  cardId: string | null
+  /** Número de parcelas no cartão ("6x"); nulo = à vista. */
+  installments: number | null
   paymentMethod: PaymentMethod | null
   pending: PendingField[]
 }
@@ -39,7 +49,11 @@ const METHOD_WORDS: Record<string, PaymentMethod> = {
   dinheiro: 'CASH',
   especie: 'CASH',
   boleto: 'BOLETO',
+  credito: 'CREDIT',
+  cartao: 'CREDIT',
 }
+const MIN_INSTALLMENTS = 2
+const MAX_INSTALLMENTS = 24
 const INCOME_VERBS = new Set(['recebi', 'ganhei'])
 const EXPENSE_VERBS = new Set(['gastei', 'paguei', 'comprei'])
 const FILLERS = new Set([
@@ -85,12 +99,34 @@ function parseItem(raw: string, ctx: ParseContext, defaultDate: string): ParsedI
 
   const type = takeType(tokens)
   const occurredOn = takeDate(tokens, ctx.today) ?? defaultDate
+  // Antes do valor: o "6" de "6 vezes" não pode virar um segundo número.
+  const installments = type === 'EXPENSE' ? takeInstallments(tokens) : null
   const amount = takeAmount(tokens)
-  let accountId = takeAccount(tokens, ctx.accounts)
+  const accountMatch = findName(tokens, ctx.accounts)
+  const cardMatch = type === 'EXPENSE' ? findName(tokens, ctx.cards) : null
   let paymentMethod = type === 'EXPENSE' ? takeMethod(tokens) : null
+  if (installments !== null && paymentMethod === null) paymentMethod = 'CREDIT'
+
+  let accountId: string | null = null
+  let cardId: string | null = null
+  if (paymentMethod === 'CREDIT') {
+    // Cartão nomeado; ou, sem nome nenhum, o único cartão. Nome só de conta com "crédito"
+    // fica pendente (não há cartão com esse nome para adivinhar).
+    if (cardMatch) cardId = use(tokens, cardMatch)
+    else if (!accountMatch && ctx.cards.length === 1) cardId = ctx.cards[0]!.id
+    if (cardId === null) paymentMethod = null
+  } else if (paymentMethod !== null || !cardMatch) {
+    if (accountMatch) accountId = use(tokens, accountMatch)
+  } else if (accountMatch) {
+    // Mesmo nome para conta e cartão, sem dizer o meio ("38 ifood nubank"): pergunta.
+    use(tokens, accountMatch)
+  } else {
+    cardId = use(tokens, cardMatch)
+    paymentMethod = 'CREDIT'
+  }
 
   // Carteira: pagar "em dinheiro" implica a conta de dinheiro, e vice-versa.
-  if (type === 'EXPENSE') {
+  if (type === 'EXPENSE' && cardId === null) {
     const cashAccounts = ctx.accounts.filter((a) => a.type === 'CASH')
     if (paymentMethod === 'CASH' && accountId === null && cashAccounts.length === 1) {
       accountId = cashAccounts[0]!.id
@@ -103,10 +139,41 @@ function parseItem(raw: string, ctx: ParseContext, defaultDate: string): ParsedI
   const pending: PendingField[] = []
   if (amount === null) pending.push('amount')
   if (description === null) pending.push('description')
-  if (accountId === null) pending.push('account')
-  if (type === 'EXPENSE' && paymentMethod === null) pending.push('paymentMethod')
+  if (cardId === null) {
+    if (accountId === null) pending.push('account')
+    if (type === 'EXPENSE' && paymentMethod === null) pending.push('paymentMethod')
+  }
 
-  return { raw, type, amount, description, occurredOn, accountId, paymentMethod, pending }
+  return {
+    raw,
+    type,
+    amount,
+    description,
+    occurredOn,
+    accountId,
+    cardId,
+    installments: cardId === null ? null : installments,
+    paymentMethod,
+    pending,
+  }
+}
+
+/** "6x", "6 vezes" (2 a 24); fora disso a palavra fica na descrição. */
+function takeInstallments(tokens: Token[]): number | null {
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]!
+    if (token.used) continue
+    const compact = /^([0-9]{1,2})x$/.exec(token.word)
+    const next = tokens[i + 1]
+    const spelled =
+      /^[0-9]{1,2}$/.test(token.word) && next && !next.used && /^vezes?$/.test(next.word)
+    const count = compact ? Number(compact[1]) : spelled ? Number(token.word) : null
+    if (count === null || count < MIN_INSTALLMENTS || count > MAX_INSTALLMENTS) continue
+    token.used = true
+    if (spelled && next) next.used = true
+    return count
+  }
+  return null
 }
 
 function takeType(tokens: Token[]): EntryType {
@@ -154,15 +221,28 @@ function takeAmount(tokens: Token[]): string | null {
   return only.amount
 }
 
-function takeAccount(tokens: Token[], accounts: EntryAccount[]): string | null {
-  const byLongestName = [...accounts].sort(
+interface NameMatch {
+  id: string
+  indices: number[]
+}
+
+/** Marca as palavras do nome como usadas e devolve o id. */
+function use(tokens: Token[], match: NameMatch): string {
+  match.indices.forEach((i) => (tokens[i]!.used = true))
+  return match.id
+}
+
+/** Nome (de conta ou de cartão) na frase, sem acento nem maiúscula; nomes de várias palavras
+ * primeiro. Mais de um nome diferente é ambíguo (nulo). Não marca as palavras. */
+function findName(tokens: Token[], entries: { id: string; name: string }[]): NameMatch | null {
+  const byLongestName = [...entries].sort(
     (a, b) => normalize(b.name).split(' ').length - normalize(a.name).split(' ').length,
   )
   const reserved = new Set<number>()
-  const matches: { accountId: string; indices: number[] }[] = []
+  const matches: NameMatch[] = []
 
-  for (const account of byLongestName) {
-    const nameWords = normalize(account.name).split(' ')
+  for (const entry of byLongestName) {
+    const nameWords = normalize(entry.name).split(' ')
     for (let start = 0; start + nameWords.length <= tokens.length; start++) {
       const indices = nameWords.map((_, k) => start + k)
       const fits = indices.every((i, k) => {
@@ -171,15 +251,14 @@ function takeAccount(tokens: Token[], accounts: EntryAccount[]): string | null {
       })
       if (fits) {
         indices.forEach((i) => reserved.add(i))
-        matches.push({ accountId: account.id, indices })
+        matches.push({ id: entry.id, indices })
       }
     }
   }
 
-  const distinct = new Set(matches.map((m) => m.accountId))
+  const distinct = new Set(matches.map((m) => m.id))
   if (distinct.size !== 1) return null
-  for (const match of matches) match.indices.forEach((i) => (tokens[i]!.used = true))
-  return matches[0]!.accountId
+  return { id: matches[0]!.id, indices: matches.flatMap((m) => m.indices) }
 }
 
 function takeMethod(tokens: Token[]): PaymentMethod | null {
