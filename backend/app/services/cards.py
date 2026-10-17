@@ -71,7 +71,9 @@ def get_active_card(session: Session, ctx: RequestContext, card_id: UUID) -> Car
 def _ensure_unique_name(
     session: Session, user_id: UUID, name: str, exclude_id: UUID | None = None
 ) -> None:
-    stmt = select(Card.id).where(Card.user_id == user_id, Card.name == name)
+    stmt = select(Card.id).where(
+        Card.user_id == user_id, Card.name == name, Card.archived_at.is_(None)
+    )
     if exclude_id is not None:
         stmt = stmt.where(Card.id != exclude_id)
     if session.scalar(stmt) is not None:

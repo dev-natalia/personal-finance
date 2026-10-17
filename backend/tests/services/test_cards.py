@@ -186,3 +186,14 @@ def test_other_user_cannot_see_the_card(
     with pytest.raises(NotFound):
         cards.get_active_card(db, other_ctx, card.id)
     assert cards.list_cards(db, other_ctx) == []
+
+
+def test_archived_card_name_can_be_reused(db: Session, ctx: RequestContext) -> None:
+    """Trocou de cartão: arquiva o Nubank antigo e cadastra o novo com o mesmo nome."""
+    old = _create(db, ctx)
+    cards.archive_card(db, ctx, old.id)
+    new = _create(db, ctx)
+    db.flush()
+    assert new.id != old.id
+    with pytest.raises(Conflict):
+        _create(db, ctx)
