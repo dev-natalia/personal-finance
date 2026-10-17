@@ -240,3 +240,14 @@ def test_other_user_cannot_read_or_change_the_card(
     )
     assert preview.status_code == 404
     assert auth_client.get(f"/api/v1/cards/{other_card.id}/invoices").status_code == 404
+
+
+def test_preview_refuses_a_date_before_the_card_opening(auth_client: TestClient) -> None:
+    """Mesma regra da gravação: a prévia não mostra o impacto de algo que será recusado."""
+    card = _card(auth_client)
+    response = auth_client.post(
+        f"/api/v1/cards/{card['id']}/preview",
+        json={"amount": "80.00", "occurred_on": "2026-01-02"},
+    )
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "purchase_before_card_opening"

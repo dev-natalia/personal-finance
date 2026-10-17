@@ -251,3 +251,28 @@ def test_purchase_skips_an_edited_earlier_closing(db: Session, ctx: RequestConte
     item = db.scalars(select(InvoiceItem).where(InvoiceItem.transaction_id == tx.id)).one()
     assert item.invoice_id == _invoice(db, card, date(2026, 12, 1)).id
     assert card_ledger.open_invoice_month(db, card, TODAY) == date(2026, 12, 1)
+
+
+def test_credit_reaches_the_open_invoice_even_without_purchases(
+    db: Session, ctx: RequestContext
+) -> None:
+    """Outubro fechou com crédito de 50 e novembro ainda não tem compra: o crédito aparece nele."""
+    card = _card(db, ctx)
+    _buy(db, ctx, card, "100.00", date(2026, 9, 20))
+    invoices.add_item(
+        db,
+        ctx,
+        _invoice(db, card, date(2026, 10, 1)),
+        kind=InvoiceItemKind.REFUND_CREDIT,
+        direction=ItemDirection.CREDIT,
+        amount=Decimal("150.00"),
+    )
+    summary = card_ledger.card_summary(db, card, TODAY)
+    assert summary.open_invoice is not None
+    assert summary.open_invoice.invoice.reference_month == date(2026, 11, 1)
+    assert summary.open_invoice.credit_from_previous == Decimal("50.00")
+    assert summary.open_invoice.total == Decimal("-50.00")
+    assert summary.future == []
+    assert db.scalars(select(Invoice).where(Invoice.card_id == card.id)).all() == [
+        _invoice(db, card, date(2026, 10, 1))
+    ]

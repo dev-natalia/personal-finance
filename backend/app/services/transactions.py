@@ -820,3 +820,7 @@ def void_transaction(session: Session, ctx: RequestContext, transaction_id: UUID
     tx.voided_at = ctx.now()
     record(session, ctx, tx, AuditAction.VOID, before)
     return tx
+
+
+# Usada pela prévia do cartão (mesma regra de datas da gravação).
+check_card_dates = _check_card_dates
