@@ -85,8 +85,26 @@ def account_balances(
     }
 
 
+def _balances_by_archived(session: Session, user_id: UUID, as_of: date, archived: bool) -> Decimal:
+    condition = Account.archived_at.is_not(None) if archived else Account.archived_at.is_(None)
+    ids = list(
+        session.scalars(
+            owned_select(Account, user_id).with_only_columns(Account.id).where(condition)
+        )
+    )
+    if not ids:
+        return ZERO
+    return quantize(sum(account_balances(session, user_id, as_of, ids).values(), ZERO))
+
+
 def total_balance(session: Session, user_id: UUID, as_of: date) -> Decimal:
-    return quantize(sum(account_balances(session, user_id, as_of).values(), ZERO))
+    """Saldo disponível: só contas ativas. Arquivar tira a conta do total."""
+    return _balances_by_archived(session, user_id, as_of, archived=False)
+
+
+def archived_balance(session: Session, user_id: UUID, as_of: date) -> Decimal:
+    """Saldo que ficou em contas arquivadas (mostrado à parte, para não sumir sem aviso)."""
+    return _balances_by_archived(session, user_id, as_of, archived=True)
 
 
 @dataclass(frozen=True)

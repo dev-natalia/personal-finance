@@ -141,6 +141,13 @@ def set_opening_total(
     return _summary_out(card_ledger.card_summary(db, card, ctx.today()))
 
 
+@router.post("/{card_id}/unarchive", response_model=CardOut)
+def unarchive_card(card_id: UUID, ctx: CtxDep, db: DbDep) -> Card:
+    card = cards.unarchive_card(db, ctx, card_id)
+    db.commit()
+    return card
+
+
 @router.post("/{card_id}/archive", response_model=CardArchiveOut)
 def archive_card(card_id: UUID, ctx: CtxDep, db: DbDep) -> CardArchiveOut:
     result = cards.archive_card(db, ctx, card_id)

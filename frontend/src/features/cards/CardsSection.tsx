@@ -1,10 +1,12 @@
 import { useId } from 'react'
 import { Link } from 'react-router'
 
-import { useCardsSummary } from '../../api/queries'
+import { api } from '../../api/endpoints'
+import { useCards, useCardsSummary, useInvalidateLedger } from '../../api/queries'
 import { formatBRL } from '../../domain/money'
 import { type Announce, useInPlace } from '../../ui/focus'
 import { ledgerRowClass, secondaryButtonClass } from '../../ui/styles'
+import { ArchivedList, ArchivedSection } from '../accounts/ArchivedList'
 import { NewCardForm } from './NewCardForm'
 
 /** Seção "Cartões" da tela Contas e cartões: fatura aberta e limite de cada um, e o cadastro. */
@@ -57,6 +59,29 @@ export function CardsSection({ onMessage }: { onMessage: Announce }) {
           Adicionar cartão
         </button>
       )}
+      <ArchivedSection title="Cartões arquivados">
+        <ArchivedCards onMessage={onMessage} />
+      </ArchivedSection>
     </section>
+  )
+}
+
+function ArchivedCards({ onMessage }: { onMessage: Announce }) {
+  const all = useCards(true)
+  const invalidate = useInvalidateLedger()
+  const items = all.data
+    ?.filter((c) => c.archived_at !== null)
+    .map((c) => ({ id: c.id, name: c.name }))
+  return (
+    <ArchivedList
+      label="Cartões arquivados"
+      items={items}
+      emptyText="Nenhum cartão arquivado."
+      onUnarchive={async (item) => {
+        await api.unarchiveCard(item.id)
+        onMessage(`Cartão ${item.name} desarquivado.`, { focus: true })
+        await invalidate()
+      }}
+    />
   )
 }

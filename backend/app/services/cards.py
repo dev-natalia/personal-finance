@@ -242,6 +242,18 @@ def update_card(
     return card
 
 
+def unarchive_card(session: Session, ctx: RequestContext, card_id: UUID) -> Card:
+    """Desfaz o arquivamento; recusa se outro cartão ativo já usa o mesmo nome."""
+    card = get_owned(session, Card, card_id, ctx.user_id, "o cartão", for_update=True)
+    if card.archived_at is None:
+        return card
+    _ensure_unique_name(session, ctx.user_id, card.name, exclude_id=card.id)
+    before = snapshot(card)
+    card.archived_at = None
+    record(session, ctx, card, AuditAction.UPDATE, before)
+    return card
+
+
 def archive_card(session: Session, ctx: RequestContext, card_id: UUID) -> CardArchiveResult:
     card = get_owned(session, Card, card_id, ctx.user_id, "o cartão", for_update=True)
     if card.archived_at is not None:

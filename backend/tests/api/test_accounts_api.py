@@ -77,6 +77,20 @@ def test_balances(auth_client: TestClient) -> None:
         "Itaú": "1000.00",
         "Nubank": "-50.25",
     }
+    assert body["archived_total"] == "0.00"
+
+
+def test_archived_account_leaves_the_total_and_can_come_back(auth_client: TestClient) -> None:
+    _create(auth_client, name="Itaú", opening_balance="1000.00")
+    old = _create(auth_client, name="Antiga", opening_balance="300.00").json()["id"]
+    auth_client.post(f"/api/v1/accounts/{old}/archive")
+    body = auth_client.get("/api/v1/accounts/balances").json()
+    assert (body["total"], body["archived_total"]) == ("1000.00", "300.00")
+    restored = auth_client.post(f"/api/v1/accounts/{old}/unarchive")
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["archived_at"] is None
+    body = auth_client.get("/api/v1/accounts/balances").json()
+    assert (body["total"], body["archived_total"]) == ("1300.00", "0.00")
 
 
 def test_categories_endpoints(auth_client: TestClient) -> None:

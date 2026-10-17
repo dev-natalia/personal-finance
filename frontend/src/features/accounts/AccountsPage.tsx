@@ -12,6 +12,7 @@ import { formatBRL, tryParseSignedMoney } from '../../domain/money'
 import { type Announce, useFocusOnReturn, useStatus } from '../../ui/focus'
 import { MoneyInput } from '../../ui/MoneyInput'
 import { CardsSection } from '../cards/CardsSection'
+import { ArchivedList, ArchivedSection } from './ArchivedList'
 import { Page } from '../../ui/Page'
 import {
   errorTextClass,
@@ -65,6 +66,12 @@ export function AccountsPage() {
           </span>
         </p>
       )}
+      {balances.data && /[1-9]/.test(balances.data.archived_total) && (
+        // Fora do total, mas sem sumir: o dinheiro que ficou em contas arquivadas.
+        <p className="mb-2 text-right text-sm text-ink-soft">
+          {formatBRL(balances.data.archived_total)} em contas arquivadas
+        </p>
+      )}
       {status}
       <ul aria-label="Suas contas" className="mb-8">
         {(accounts.data ?? []).map((account) => (
@@ -77,6 +84,9 @@ export function AccountsPage() {
         ))}
       </ul>
       <NewAccountForm onCreated={(name) => announce(`Conta ${name} criada.`)} />
+      <ArchivedSection title="Contas arquivadas">
+        <ArchivedAccounts balanceOf={balanceOf} onMessage={announce} />
+      </ArchivedSection>
       <CardsSection onMessage={announce} />
     </Page>
   )
@@ -92,6 +102,35 @@ function useMessageFromNavigation(announce: Announce): void {
     shown.current = true
     announce(message, { focus: true })
   }, [announce, message])
+}
+
+function ArchivedAccounts({
+  balanceOf,
+  onMessage,
+}: {
+  balanceOf: Map<string, string>
+  onMessage: Announce
+}) {
+  const all = useAccounts(true)
+  const refresh = useRefreshAccounts()
+  const items = all.data
+    ?.filter((a) => a.archived_at !== null)
+    .map((a) => {
+      const balance = balanceOf.get(a.id)
+      return { id: a.id, name: a.name, detail: balance ? formatBRL(balance) : undefined }
+    })
+  return (
+    <ArchivedList
+      label="Contas arquivadas"
+      items={items}
+      emptyText="Nenhuma conta arquivada."
+      onUnarchive={async (item) => {
+        await api.unarchiveAccount(item.id)
+        onMessage(`Conta ${item.name} desarquivada.`, { focus: true })
+        await refresh()
+      }}
+    />
+  )
 }
 
 function AccountRow({

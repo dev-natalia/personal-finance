@@ -197,3 +197,69 @@ test('new card form takes the focus and gives it back on cancel', async () => {
   await user.click(screen.getByRole('button', { name: 'Cancelar' }))
   expect(screen.getByRole('button', { name: 'Adicionar cartão' })).toHaveFocus()
 })
+
+
+test('archived accounts leave the total and can be unarchived', async () => {
+  mockAccounts()
+  const unarchived: string[] = []
+  const antiga = { ...ACCOUNT_LIST[1]!, id: 'acc-antiga', name: 'Antiga', archived_at: '2026-10-15T15:00:00Z' }
+  server.use(
+    http.get('/api/v1/accounts', ({ request }) =>
+      HttpResponse.json(
+        new URL(request.url).searchParams.get('include_archived') ? [...ACCOUNT_LIST, antiga] : ACCOUNT_LIST,
+      ),
+    ),
+    http.get('/api/v1/accounts/balances', () =>
+      HttpResponse.json({
+        ...BALANCES,
+        archived_total: '300.00',
+        accounts: [
+          ...BALANCES.accounts,
+          { account_id: 'acc-antiga', name: 'Antiga', archived: true, balance: '300.00' },
+        ],
+      }),
+    ),
+    http.post('/api/v1/accounts/:id/unarchive', ({ params }) => {
+      unarchived.push(String(params.id))
+      return HttpResponse.json({ ...antiga, archived_at: null })
+    }),
+  )
+  const user = userEvent.setup()
+  renderWithProviders(<AccountsPage />, { route: '/contas' })
+  expect(await screen.findByText('R$ 300,00 em contas arquivadas')).toBeInTheDocument()
+  await user.click(screen.getByText('Contas arquivadas'))
+  const archived = await screen.findByRole('list', { name: 'Contas arquivadas' })
+  expect(await within(archived).findByText('Antiga')).toBeInTheDocument()
+  expect(within(archived).getByText('R$ 300,00')).toBeInTheDocument()
+  await user.click(within(archived).getByRole('button', { name: 'Desarquivar Antiga' }))
+  await waitFor(() => expect(unarchived).toEqual(['acc-antiga']))
+  expect(await screen.findByRole('status')).toHaveTextContent('Conta Antiga desarquivada.')
+})
+
+test('archived cards can be unarchived', async () => {
+  mockAccounts()
+  const unarchived: string[] = []
+  const inter = {
+    id: 'card-inter',
+    name: 'Inter',
+    credit_limit: '2000.00',
+    closing_day: 20,
+    due_day: 27,
+    opening_date: '2026-09-01',
+    archived_at: '2026-10-15T15:00:00Z',
+  }
+  server.use(
+    http.get('/api/v1/cards', () => HttpResponse.json([CARDS_SUMMARY[0]!.card, inter])),
+    http.post('/api/v1/cards/:id/unarchive', ({ params }) => {
+      unarchived.push(String(params.id))
+      return HttpResponse.json({ ...inter, archived_at: null })
+    }),
+  )
+  const user = userEvent.setup()
+  renderWithProviders(<AccountsPage />, { route: '/contas' })
+  await user.click(await screen.findByText('Cartões arquivados'))
+  const archived = await screen.findByRole('list', { name: 'Cartões arquivados' })
+  await user.click(await within(archived).findByRole('button', { name: 'Desarquivar Inter' }))
+  await waitFor(() => expect(unarchived).toEqual(['card-inter']))
+  expect(await screen.findByRole('status')).toHaveTextContent('Cartão Inter desarquivado.')
+})
