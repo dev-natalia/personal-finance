@@ -23,6 +23,7 @@ import {
 } from '../../ui/styles'
 import { ChargeForm } from './ChargeForm'
 import { InvoiceDetails } from './InvoiceDetails'
+import { InvoicePaymentForm } from './InvoicePaymentForm'
 import { DaySelect } from './NewCardForm'
 
 const textButton = 'min-h-11 px-2 text-sm text-pen underline-offset-2 hover:underline'
@@ -72,6 +73,7 @@ export function CardPage() {
     <Page title={card.name}>
       {status}
       <OpenInvoice open={open} limit={limit} />
+      {payable && <PayButton card={card} invoice={payable} onMessage={announce} />}
       {payable && <PayableInvoice card={card} invoice={payable} onMessage={announce} />}
 
       <div className="mt-6 border-t border-rule">
@@ -131,6 +133,38 @@ function OpenInvoice({
         Limite usado {formatBRLNoBreak(limit.used)}, disponível {formatBRLNoBreak(limit.available)}
       </p>
     </section>
+  )
+}
+
+/** "Pagar fatura de outubro": abre o formulário na própria página. */
+function PayButton({
+  card,
+  invoice,
+  onMessage,
+}: {
+  card: CardOut
+  invoice: InvoiceSummaryOut
+  onMessage: Announce
+}) {
+  const [paying, setPaying] = useState(false)
+  const label = `Pagar fatura de ${monthName(invoice.reference_month)}`
+  if (!paying) {
+    return (
+      <button type="button" onClick={() => setPaying(true)} className={`${primaryButtonClass} mt-4`}>
+        {label}
+      </button>
+    )
+  }
+  return (
+    <InvoicePaymentForm
+      invoice={invoice}
+      cardName={card.name}
+      onCancel={() => setPaying(false)}
+      onDone={(message) => {
+        setPaying(false)
+        onMessage(message, { focus: true })
+      }}
+    />
   )
 }
 

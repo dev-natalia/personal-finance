@@ -92,6 +92,33 @@ export function formatBRLNoBreak(amount: string): string {
   return formatBRL(amount).replace(' ', '\u00a0')
 }
 
+/** "-12.30" → -1230n: centavos inteiros, para somar sem ponto flutuante. */
+function toCents(amount: string): bigint {
+  const negative = amount.startsWith('-')
+  const [integer = '0', fraction = ''] = amount.replace(/^-/, '').split('.')
+  const cents = BigInt(integer + fraction.padEnd(2, '0').slice(0, 2))
+  return negative ? -cents : cents
+}
+
+function fromCents(cents: bigint): string {
+  const negative = cents < BigInt(0)
+  const digits = (negative ? -cents : cents).toString().padStart(3, '0')
+  return `${negative ? '-' : ''}${digits.slice(0, -2)}.${digits.slice(-2)}`
+}
+
+export function addMoney(a: string, b: string): string {
+  return fromCents(toCents(a) + toCents(b))
+}
+
+export function subtractMoney(a: string, b: string): string {
+  return fromCents(toCents(a) - toCents(b))
+}
+
+/** Valor de cada parcela × quantidade de parcelas. */
+export function multiplyMoney(amount: string, count: number): string {
+  return fromCents(toCents(amount) * BigInt(count))
+}
+
 /** "42.50" → "42,50", para mostrar num campo editável. */
 export function toInputAmount(amount: string): string {
   return amount.replace('.', ',')

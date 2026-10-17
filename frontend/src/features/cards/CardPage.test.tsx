@@ -257,3 +257,34 @@ test('older invoices load on demand', async () => {
   expect(requested).toEqual([null, '2026-10-01'])
   expect(screen.queryByRole('button', { name: 'Mostrar faturas mais antigas' })).not.toBeInTheDocument()
 })
+
+test('pay invoice button opens the payment form and announces the result', async () => {
+  mockApi()
+  server.use(
+    http.get('/api/v1/accounts', () =>
+      HttpResponse.json([
+        { id: 'acc-itau', name: 'Itaú', type: 'CHECKING', opening_balance: '0.00', opening_date: '2026-10-01', archived_at: null },
+      ]),
+    ),
+    http.post('/api/v1/invoices/:id/payments', () =>
+      HttpResponse.json(
+        { group_id: 'g', payments: [], charge: null, replayed: false, warnings: [] },
+        { status: 201 },
+      ),
+    ),
+  )
+  const { user } = renderPage()
+  await user.click(await screen.findByRole('button', { name: 'Pagar fatura de outubro' }))
+  const form = screen.getByRole('form', { name: 'Pagar fatura de outubro' })
+  await waitFor(() => expect(within(form).getByLabelText('Conta')).toHaveValue('acc-itau'))
+  await user.click(within(form).getByRole('button', { name: 'Registrar pagamento' }))
+  expect(await screen.findByRole('status')).toHaveTextContent('Pagamento registrado.')
+  expect(screen.queryByRole('form', { name: 'Pagar fatura de outubro' })).not.toBeInTheDocument()
+})
+
+test('no pay button without a payable invoice', async () => {
+  mockApi({ ...NUBANK, payable: null })
+  renderPage()
+  await screen.findByText('Fatura de novembro, aberta')
+  expect(screen.queryByRole('button', { name: /Pagar fatura/ })).not.toBeInTheDocument()
+})
