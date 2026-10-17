@@ -4,6 +4,7 @@ Aplicação pessoal de controle financeiro com registro por frases curtas e, fut
 
 - Decisões e regras financeiras: `docs/superpowers/specs/2026-10-15-visao-geral-design.md`
 - Subprojeto 1 (fundação e lançamentos): `docs/superpowers/specs/2026-10-15-fundacao-e-lancamentos-design.md`
+- Subprojeto 2 (cartões e faturas): `docs/superpowers/specs/2026-10-16-cartoes-e-faturas-design.md`
 
 ## Requisitos
 
@@ -78,6 +79,22 @@ bash scripts/e2e.sh
 ```
 
 Em produção, defina `DATABASE_URL`, `SECRET_KEY`, `APP_ORIGIN` (o endereço HTTPS público), deixe `COOKIE_SECURE` no padrão (`true`) e configure `FORWARDED_ALLOW_IPS` conforme a seção sobre proxy abaixo.
+
+## Cartões e faturas
+
+**Cadastro.** Em "Contas e cartões" → "Adicionar cartão": nome, limite, dia de fechamento e dia de vencimento. O cartão começa a ser acompanhado numa data (padrão: hoje); compras antes dela não entram como compra normal. O passo opcional "Como está hoje" traz o que já existe sem lançar o passado compra por compra:
+
+- **Total da fatura aberta agora**: entra como saldo inicial da fatura atual.
+- **Fatura fechada sem pagar**: total e vencimento, para pagá-la pelo app.
+- **Parceladas em andamento**: uma linha por compra (valor total, número de parcelas, data da compra e quantas faltam depois da fatura atual). Só as parcelas que faltam entram nas próximas faturas.
+
+**Registro.** A frase reconhece cartão por "crédito" ou "cartão" e parcelas por "6x" ou "6 vezes" (de 2 a 24): `1200 celular crédito nubank 6x`. Quando o nome é o mesmo de uma conta (Nubank conta e Nubank cartão), o comprovante pergunta como foi pago. Antes de confirmar, o comprovante mostra a fatura e o limite antes e depois da compra; os valores vêm do backend. Uma compra no dia do fechamento ou depois cai na fatura seguinte; parcelas são arredondadas para baixo no centavo e a sobra vai na primeira.
+
+**Tela do cartão** (`/cartoes/:id`): fatura aberta, datas, limite usado e disponível (o limite conta também as parcelas futuras). Na fatura fechada a pagar, o campo "Total no {cartão}" compara o total do banco com o calculado aqui e diz quanto falta ou sobra; os atalhos registram a compra esquecida (na véspera do fechamento) ou um encargo (juros, IOF). Faturas futuras, compras da fatura e faturas anteriores ficam em seções recolhíveis.
+
+**Pagamento.** "Pagar fatura de {mês}" aceita até 5 contas de origem. Se faltar algo numa fatura fechada: só pagar a parte, levar o restante para a próxima fatura, ou parcelar com o cartão (os juros, a diferença entre parcelas e restante, viram um encargo). "Anular pagamento" desfaz o pagamento inteiro, inclusive o parcelamento.
+
+**Estorno e anulação.** O estorno de uma compra no cartão vira crédito na fatura: cancela parcelas inteiras a partir da última (só em faturas não fechadas) e o resto entra como crédito na fatura aberta. Fatura fechada nunca muda: anular ou editar uma compra que já está nela é recusado ("Registre um estorno").
 
 ## Instalando no celular
 
