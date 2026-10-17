@@ -1,4 +1,4 @@
-import { useId } from 'react'
+import { useId, useState } from 'react'
 
 import { useAccounts, useAnalysisSummary, useCards, useEntryHints } from '../../api/queries'
 import type { AnalysisSummaryOut, PeriodOut } from '../../api/types'
@@ -8,7 +8,9 @@ import { formatBRL } from '../../domain/money'
 import { Field } from '../../ui/Field'
 import { Page } from '../../ui/Page'
 import { chipClass, errorTextClass, inputClass, secondaryButtonClass, slipClass } from '../../ui/styles'
+import { DayDetails } from './DayDetails'
 import { PlaceRanking } from './PlaceRanking'
+import { SpendingCalendar } from './SpendingCalendar'
 import { SpendingDonut } from './SpendingDonut'
 import { type PeriodKind, useAnalysisParams } from './useAnalysisParams'
 
@@ -62,13 +64,16 @@ function isEmpty(summary: AnalysisSummaryOut): boolean {
 export function AnalysisPage() {
   const params = useAnalysisParams()
   const hints = useEntryHints()
-  const summary = useAnalysisSummary({
+  const query = {
     period: params.period,
     date: params.date ?? undefined,
     mode: params.mode,
     source: params.source ?? undefined,
     category_id: params.categoryId ?? undefined,
-  })
+  }
+  const summary = useAnalysisSummary(query)
+  // Dia tocado no calendário; vale só para o período em que foi escolhido.
+  const [picked, setPicked] = useState<{ day: string; period: string } | null>(null)
   const currentYear = (hints.data?.today ?? '').slice(0, 4)
   const data = summary.data
 
@@ -97,6 +102,18 @@ export function AnalysisPage() {
                 onSelect={(categoryId) => params.set({ categoryId })}
               />
               <PlaceRanking places={data.by_place} search={placeSearch(params.mode, params.source)} />
+              <SpendingCalendar
+                summary={data}
+                today={hints.data?.today ?? ''}
+                selectedDay={picked?.period === data.period.start ? picked.day : null}
+                onDay={(day) =>
+                  setPicked((current) =>
+                    current?.day === day ? null : { day, period: data.period.start },
+                  )
+                }
+                onMonth={(firstDay) => params.set({ period: 'month', date: firstDay })}
+              />
+              {picked?.period === data.period.start && <DayDetails day={picked.day} query={query} />}
             </>
           )}
         </>

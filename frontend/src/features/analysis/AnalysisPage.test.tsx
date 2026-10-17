@@ -10,8 +10,10 @@ import {
   ACCOUNTS,
   ANALYSIS_SUMMARY,
   CARDS_SUMMARY,
+  CATEGORIES,
   EMPTY_ANALYSIS,
   HINTS,
+  transaction,
 } from '../../test/fixtures'
 import { renderWithProviders } from '../../test/render'
 import { server } from '../../test/server'
@@ -38,6 +40,19 @@ function mockApi(summary: (params: URLSearchParams) => AnalysisSummaryOut = () =
         { ...CARDS_SUMMARY[0]!.card, id: 'card-inter', name: 'Inter', archived_at: '2026-10-01T12:00:00Z' },
       ]),
     ),
+    http.get('/api/v1/categories', () => HttpResponse.json(CATEGORIES)),
+    http.get('/api/v1/analysis/day', ({ request }) => {
+      const day = new URL(request.url).searchParams.get('date')
+      queries.push(new URL(request.url).searchParams)
+      return HttpResponse.json(
+        day === '2026-10-09'
+          ? [
+              { transaction: transaction({ description: 'Mercado Livre', amount: '120.00' }), amount: '120.00' },
+              { transaction: transaction({ description: 'iFood', amount: '40.00' }), amount: '40.00' },
+            ]
+          : [],
+      )
+    }),
     http.get('/api/v1/analysis/summary', ({ request }) => {
       const params = new URL(request.url).searchParams
       queries.push(params)
@@ -216,4 +231,71 @@ test('place links carry mode and source', async () => {
     'href',
     '/analise/lugar/m%3Amerchant-ifood?mode=purchase&source=card%3Acard-nubank',
   )
+})
+
+test('calendar starts on monday', async () => {
+  mockApi()
+  renderPage()
+  const calendar = await screen.findByRole('table', { name: 'Seus dias' })
+  const headers = within(calendar).getAllByRole('columnheader').map((h) => h.textContent)
+  expect(headers).toEqual(['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'])
+  const [firstWeek] = within(calendar).getAllByRole('row').slice(1)
+  const cells = within(firstWeek!).getAllByRole('cell')
+  expect(cells.slice(0, 3).map((c) => c.textContent)).toEqual(['', '', ''])
+  expect(within(cells[3]!).getByRole('button', { name: '01/10: sem gasto' })).toBeInTheDocument()
+})
+
+test('busiest day and days without spending', async () => {
+  mockApi()
+  renderPage()
+  expect(await screen.findByText('Dia mais caro: 09/10, R$ 160,00')).toBeInTheDocument()
+  // De 1º a 15/10 (hoje), só três dias tiveram gasto.
+  expect(screen.getByText('Sem gasto: 12 dias')).toBeInTheDocument()
+})
+
+test('tapping a day lists its spending', async () => {
+  const queries = mockApi()
+  const { user } = renderPage()
+  await user.click(await screen.findByRole('button', { name: '09/10: R$ 160,00' }))
+  const details = await screen.findByRole('region', { name: 'Gastos de 09/10' })
+  expect(await within(details).findByText('Mercado Livre')).toBeInTheDocument()
+  expect(within(details).getByText('R$ 120,00')).toBeInTheDocument()
+  expect(within(details).getAllByText('Mercado, Pix Itaú')).toHaveLength(2)
+  expect(last(queries).get('date')).toBe('2026-10-09')
+})
+
+test('week shows seven days', async () => {
+  mockApi(() => ({
+    ...ANALYSIS_SUMMARY,
+    period: { kind: 'week', start: '2026-10-12', end: '2026-10-18', has_next: false },
+    by_day: [{ day: '2026-10-15', amount: '20.50' }],
+    busiest: { day: '2026-10-15', amount: '20.50' },
+  }))
+  renderPage('/analise?period=week')
+  const calendar = await screen.findByRole('table', { name: 'Seus dias' })
+  expect(within(calendar).getAllByRole('button')).toHaveLength(7)
+  expect(within(calendar).getByRole('button', { name: '15/10: R$ 20,50' })).toBeInTheDocument()
+})
+
+test('year shows months and opens the month', async () => {
+  const queries = mockApi((params) =>
+    params.get('period') === 'year'
+      ? {
+          ...ANALYSIS_SUMMARY,
+          period: { kind: 'year', start: '2026-01-01', end: '2026-10-31', has_next: false },
+          by_day: [
+            { day: '2026-09-01', amount: '30.00' },
+            { day: '2026-10-01', amount: '270.50' },
+          ],
+          busiest: { day: '2026-10-01', amount: '270.50' },
+        }
+      : ANALYSIS_SUMMARY,
+  )
+  const { user } = renderPage('/analise?period=year')
+  const months = await screen.findByRole('list', { name: 'Seus meses' })
+  expect(within(months).getAllByRole('button')).toHaveLength(10)
+  expect(screen.getByText('Mês mais caro: outubro, R$ 270,50')).toBeInTheDocument()
+  await user.click(within(months).getByRole('button', { name: 'setembro: R$ 30,00' }))
+  await waitFor(() => expect(last(queries).get('period')).toBe('month'))
+  expect(last(queries).get('date')).toBe('2026-09-01')
 })

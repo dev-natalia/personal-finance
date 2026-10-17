@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { addDays, dayLabel, firstDayOfMonth, matchDate, shortDate } from './dates'
+import { addDays, dayLabel, firstDayOfMonth, matchDate, shortDate, weekdayIndex } from './dates'
 
 const TODAY = '2026-10-15'
 
@@ -70,4 +70,10 @@ test.each([
 
 test('shortDate shows day and month', () => {
   expect(shortDate('2026-11-03')).toBe('03/11')
+})
+
+test('weekdayIndex counts from monday', () => {
+  expect(weekdayIndex('2026-10-12')).toBe(0) // segunda
+  expect(weekdayIndex('2026-10-01')).toBe(3) // quinta
+  expect(weekdayIndex('2026-10-18')).toBe(6) // domingo
 })

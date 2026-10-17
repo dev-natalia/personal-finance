@@ -112,3 +112,9 @@ export function shortDate(iso: string): string {
   const [, month, day] = parts(iso)
   return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}`
 }
+
+/** Dia da semana com a segunda-feira como 0 e o domingo como 6 (semana da análise). */
+export function weekdayIndex(iso: string): number {
+  const [year, month, day] = parts(iso)
+  return (new Date(Date.UTC(year, month - 1, day)).getUTCDay() + 6) % 7
+}
