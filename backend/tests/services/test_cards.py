@@ -222,3 +222,20 @@ def test_opening_total_is_fixed_once_its_invoice_closed(db: Session, ctx: Reques
     with pytest.raises(RuleViolation) as error:
         cards.set_opening_total(db, ctx, card.id, Decimal("100.00"))
     assert error.value.code == "opening_invoice_closed"
+
+
+def test_unarchive_restores_the_card(db: Session, ctx: RequestContext) -> None:
+    card = _create(db, ctx)
+    cards.archive_card(db, ctx, card.id)
+    assert cards.unarchive_card(db, ctx, card.id).archived_at is None
+    assert [c.id for c in cards.list_cards(db, ctx)] == [card.id]
+
+
+def test_unarchive_refuses_a_name_already_in_use(db: Session, ctx: RequestContext) -> None:
+    """Arquivou o Nubank antigo e criou outro Nubank: o antigo não volta com o mesmo nome."""
+    old = _create(db, ctx)
+    cards.archive_card(db, ctx, old.id)
+    _create(db, ctx)
+    with pytest.raises(Conflict) as error:
+        cards.unarchive_card(db, ctx, old.id)
+    assert error.value.code == "name_already_exists"

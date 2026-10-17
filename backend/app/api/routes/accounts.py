@@ -1,4 +1,3 @@
-from decimal import Decimal
 from uuid import UUID
 
 from fastapi import APIRouter
@@ -31,7 +30,8 @@ def balances(ctx: CtxDep, db: DbDep, as_of: ApiDate | None = None) -> BalancesOu
     values = ledger.account_balances(db, ctx.user_id, day)
     return BalancesOut(
         as_of=day,
-        total=sum(values.values(), Decimal("0.00")),
+        total=ledger.total_balance(db, ctx.user_id, day),
+        archived_total=ledger.archived_balance(db, ctx.user_id, day),
         accounts=[
             AccountBalanceOut(
                 account_id=a.id,
@@ -69,6 +69,13 @@ def update_account(account_id: UUID, body: AccountPatch, ctx: CtxDep, db: DbDep)
         opening_balance=body.opening_balance,
         opening_date=body.opening_date,
     )
+    db.commit()
+    return account
+
+
+@router.post("/{account_id}/unarchive", response_model=AccountOut)
+def unarchive_account(account_id: UUID, ctx: CtxDep, db: DbDep) -> Account:
+    account = accounts.unarchive_account(db, ctx, account_id)
     db.commit()
     return account
 

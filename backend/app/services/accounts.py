@@ -111,6 +111,17 @@ def update_account(
     return account
 
 
+def unarchive_account(session: Session, ctx: RequestContext, account_id: UUID) -> Account:
+    """Desfaz o arquivamento: a conta volta às listas, ao total e aceita lançamentos."""
+    account = get_owned(session, Account, account_id, ctx.user_id, "a conta", for_update=True)
+    if account.archived_at is None:
+        return account
+    before = snapshot(account)
+    account.archived_at = None
+    record(session, ctx, account, AuditAction.UPDATE, before)
+    return account
+
+
 def archive_account(session: Session, ctx: RequestContext, account_id: UUID) -> ArchiveResult:
     account = get_owned(session, Account, account_id, ctx.user_id, "a conta", for_update=True)
     if account.archived_at is not None:

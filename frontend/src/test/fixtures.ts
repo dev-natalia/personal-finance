@@ -127,6 +127,7 @@ export const CATEGORIES: CategoryOut[] = [
 export const BALANCES: BalancesOut = {
   as_of: TODAY,
   total: '1008.00',
+  archived_total: '0.00',
   accounts: [
     { account_id: ACCOUNTS.itau.id, name: 'Itaú', archived: false, balance: '958.00' },
     { account_id: ACCOUNTS.carteira.id, name: 'Carteira', archived: false, balance: '50.00' },

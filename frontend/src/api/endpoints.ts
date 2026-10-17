@@ -84,6 +84,8 @@ export const api = {
     apiFetch<AccountOut>(`${V1}/accounts`, { method: 'POST', body }),
   updateAccount: (id: string, body: AccountPatch) =>
     apiFetch<AccountOut>(`${V1}/accounts/${id}`, { method: 'PATCH', body }),
+  unarchiveAccount: (id: string) =>
+    apiFetch<AccountOut>(`${V1}/accounts/${id}/unarchive`, { method: 'POST' }),
   archiveAccount: (id: string) =>
     apiFetch<AccountArchiveOut>(`${V1}/accounts/${id}/archive`, { method: 'POST' }),
 
@@ -125,6 +127,8 @@ export const api = {
   createCard: (body: CardIn) => apiFetch<CardOut>(`${V1}/cards`, { method: 'POST', body }),
   updateCard: (id: string, patch: CardPatch) =>
     apiFetch<CardOut>(`${V1}/cards/${id}`, { method: 'PATCH', body: patch }),
+  unarchiveCard: (id: string) =>
+    apiFetch<CardOut>(`${V1}/cards/${id}/unarchive`, { method: 'POST' }),
   archiveCard: (id: string) =>
     apiFetch<CardArchiveOut>(`${V1}/cards/${id}/archive`, { method: 'POST' }),
   cardInvoices: (id: string, before?: string) =>

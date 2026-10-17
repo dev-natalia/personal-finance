@@ -124,6 +124,23 @@ export interface paths {
         patch: operations["update_account_api_v1_accounts__account_id__patch"];
         trace?: never;
     };
+    "/api/v1/accounts/{account_id}/unarchive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Unarchive Account */
+        post: operations["unarchive_account_api_v1_accounts__account_id__unarchive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/accounts/{account_id}/archive": {
         parameters: {
             query?: never;
@@ -230,6 +247,23 @@ export interface paths {
          */
         put: operations["set_opening_total_api_v1_cards__card_id__opening_total_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cards/{card_id}/unarchive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Unarchive Card */
+        post: operations["unarchive_card_api_v1_cards__card_id__unarchive_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -651,6 +685,11 @@ export interface components {
              * @example 42.50
              */
             total: string;
+            /**
+             * Archived Total
+             * @example 42.50
+             */
+            archived_total: string;
             /** Accounts */
             accounts: components["schemas"]["AccountBalanceOut"][];
         };
@@ -1739,6 +1778,37 @@ export interface operations {
             };
         };
     };
+    unarchive_account_api_v1_accounts__account_id__unarchive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     archive_account_api_v1_accounts__account_id__archive_post: {
         parameters: {
             query?: never;
@@ -1944,6 +2014,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CardSummaryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unarchive_card_api_v1_cards__card_id__unarchive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                card_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardOut"];
                 };
             };
             /** @description Validation Error */

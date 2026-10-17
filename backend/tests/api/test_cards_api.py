@@ -283,3 +283,12 @@ def test_opening_total_can_be_set_later(auth_client: TestClient) -> None:
         f"/api/v1/cards/{card['id']}/opening-total", json={"amount": "-1.00"}
     )
     assert negative.status_code == 422
+
+
+def test_card_can_be_unarchived(auth_client: TestClient) -> None:
+    card = _card(auth_client)
+    auth_client.post(f"/api/v1/cards/{card['id']}/archive")
+    response = auth_client.post(f"/api/v1/cards/{card['id']}/unarchive")
+    assert response.status_code == 200, response.text
+    assert response.json()["archived_at"] is None
+    assert [c["id"] for c in auth_client.get("/api/v1/cards").json()] == [card["id"]]

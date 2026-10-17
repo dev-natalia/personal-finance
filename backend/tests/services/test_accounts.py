@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.domain.errors import Conflict, NotFound, RuleViolation
 from app.models import Actor, AuditAction, AuditLog
-from app.services import accounts
+from app.services import accounts, ledger
 from app.services.context import RequestContext
 from tests.support import make_account
 
@@ -84,3 +84,22 @@ def test_list_hides_archived_by_default(db: Session, ctx: RequestContext) -> Non
     accounts.archive_account(db, ctx, archived.id)
     assert [a.id for a in accounts.list_accounts(db, ctx)] == [kept.id]
     assert len(accounts.list_accounts(db, ctx, include_archived=True)) == 2
+
+
+def test_unarchive_restores_the_account(db: Session, ctx: RequestContext) -> None:
+    account = make_account(db, ctx)
+    accounts.archive_account(db, ctx, account.id)
+    restored = accounts.unarchive_account(db, ctx, account.id)
+    assert restored.archived_at is None
+    assert [a.id for a in accounts.list_accounts(db, ctx)] == [account.id]
+    assert _audit(db, account.id)[-1].action is AuditAction.UPDATE
+
+
+def test_total_balance_counts_only_active_accounts(db: Session, ctx: RequestContext) -> None:
+    """Arquivar tira o saldo do total disponível; ele aparece à parte, sem sumir."""
+    make_account(db, ctx, name="Itaú", opening_balance="1000.00")
+    old = make_account(db, ctx, name="Antiga", opening_balance="300.00")
+    accounts.archive_account(db, ctx, old.id)
+    today = ctx.today()
+    assert ledger.total_balance(db, ctx.user_id, today) == Decimal("1000.00")
+    assert ledger.archived_balance(db, ctx.user_id, today) == Decimal("300.00")
