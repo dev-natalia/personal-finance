@@ -334,7 +334,7 @@ export function NewCardForm({ onCreated, onCancel }: Props) {
   )
 }
 
-function DaySelect({
+export function DaySelect({
   id,
   label,
   value,

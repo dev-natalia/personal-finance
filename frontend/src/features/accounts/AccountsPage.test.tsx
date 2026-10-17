@@ -179,3 +179,11 @@ test('accounts page lists cards with open invoice and available limit', async ()
   await user.click(within(section).getByRole('button', { name: 'Adicionar cartão' }))
   expect(within(section).getByRole('form', { name: 'Novo cartão' })).toBeInTheDocument()
 })
+
+test('shows the message left by the card page after archiving', async () => {
+  mockAccounts()
+  renderWithProviders(<AccountsPage />, {
+    route: { pathname: '/contas', state: { message: 'Cartão Nubank arquivado.' } },
+  })
+  expect(await screen.findByRole('status')).toHaveTextContent('Cartão Nubank arquivado.')
+})

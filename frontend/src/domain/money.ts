@@ -87,6 +87,11 @@ export function formatBRL(amount: string): string {
   return `${negative && !isZero ? '−' : ''}R$ ${grouped},${cents}`
 }
 
+/** Como `formatBRL`, mas "R$" não se separa do número numa quebra de linha. */
+export function formatBRLNoBreak(amount: string): string {
+  return formatBRL(amount).replace(' ', '\u00a0')
+}
+
 /** "42.50" → "42,50", para mostrar num campo editável. */
 export function toInputAmount(amount: string): string {
   return amount.replace('.', ',')

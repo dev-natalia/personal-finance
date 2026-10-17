@@ -1,13 +1,11 @@
 import { usePurchasePreview } from '../../api/queries'
 import type { PreviewIn } from '../../api/types'
 import { monthName } from '../../domain/dates'
-import { formatBRL } from '../../domain/money'
+import { formatBRLNoBreak } from '../../domain/money'
 import { linkClass } from '../../ui/styles'
 
 /** Valor com espaço que não quebra: "R$" nunca fica numa linha e o número na outra. */
-function money(amount: string): string {
-  return formatBRL(amount).replace(' ', '\u00a0')
-}
+const money = formatBRLNoBreak
 
 interface Props {
   /** O que pedir à prévia; nulo enquanto não é compra no cartão com valor válido. */

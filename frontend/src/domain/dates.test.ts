@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { addDays, dayLabel, firstDayOfMonth, matchDate } from './dates'
+import { addDays, dayLabel, firstDayOfMonth, matchDate, shortDate } from './dates'
 
 const TODAY = '2026-10-15'
 
@@ -66,4 +66,8 @@ test.each([
   ['2025-12-20', '20/12/2025'],
 ])('dayLabel(%j) is %j', (iso, expected) => {
   expect(dayLabel(iso, TODAY)).toBe(expected)
+})
+
+test('shortDate shows day and month', () => {
+  expect(shortDate('2026-11-03')).toBe('03/11')
 })

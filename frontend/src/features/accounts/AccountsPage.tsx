@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { type FormEvent, useId, useRef, useState } from 'react'
+import { type FormEvent, useEffect, useId, useRef, useState } from 'react'
+import { useLocation } from 'react-router'
 
 import { ApiError, type FieldError } from '../../api/client'
 import { api } from '../../api/endpoints'
@@ -51,6 +52,7 @@ export function AccountsPage() {
   const accounts = useAccounts()
   const balances = useBalances()
   const { announce, status } = useStatus()
+  useMessageFromNavigation(announce)
   const balanceOf = new Map((balances.data?.accounts ?? []).map((b) => [b.account_id, b.balance]))
 
   return (
@@ -78,6 +80,18 @@ export function AccountsPage() {
       <CardsSection onMessage={announce} />
     </Page>
   )
+}
+
+/** Mensagem deixada por outra tela ao voltar para cá (ex.: cartão arquivado, com aviso). */
+function useMessageFromNavigation(announce: Announce): void {
+  const location = useLocation()
+  const message = (location.state as { message?: unknown } | null)?.message
+  const shown = useRef(false)
+  useEffect(() => {
+    if (shown.current || typeof message !== 'string') return
+    shown.current = true
+    announce(message, { focus: true })
+  }, [announce, message])
 }
 
 function AccountRow({

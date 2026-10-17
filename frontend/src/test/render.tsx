@@ -1,7 +1,7 @@
 import { type QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, type RenderResult } from '@testing-library/react'
 import type { ReactElement } from 'react'
-import { MemoryRouter } from 'react-router'
+import { type InitialEntry, MemoryRouter } from 'react-router'
 
 import { createQueryClient } from '../api/queryClient'
 
@@ -11,7 +11,7 @@ import { createQueryClient } from '../api/queryClient'
  */
 export function renderWithProviders(
   ui: ReactElement,
-  options: { route?: string } = {},
+  options: { route?: InitialEntry } = {},
 ): RenderResult & { queryClient: QueryClient } {
   const queryClient = createQueryClient()
   const defaults = queryClient.getDefaultOptions()

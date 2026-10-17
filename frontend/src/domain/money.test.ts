@@ -6,6 +6,7 @@ import { describe, expect, test } from 'vitest'
 import {
   InvalidMoney,
   formatBRL,
+  formatBRLNoBreak,
   isPositive,
   parseMoney,
   toInputAmount,
@@ -94,4 +95,8 @@ test('tryParseSignedMoney accepts a leading minus', () => {
   expect(tryParseSignedMoney('-0')).toBe('0.00')
   expect(tryParseSignedMoney('--5')).toBeNull()
   expect(tryParseSignedMoney('abc')).toBeNull()
+})
+
+test('formatBRLNoBreak keeps the currency with the number', () => {
+  expect(formatBRLNoBreak('2300')).toBe('R$\u00a02.300,00')
 })

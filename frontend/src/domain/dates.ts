@@ -102,7 +102,13 @@ export function matchDate(words: string[], index: number, today: string): DateMa
 export function dayLabel(iso: string, today: string): string {
   if (iso === today) return 'Hoje'
   if (iso === addDays(today, -1)) return 'Ontem'
-  const [year, month, day] = parts(iso)
-  const short = `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}`
+  const [year] = parts(iso)
+  const short = shortDate(iso)
   return year === parts(today)[0] ? short : `${short}/${year}`
+}
+
+/** "2026-11-03" → "03/11". */
+export function shortDate(iso: string): string {
+  const [, month, day] = parts(iso)
+  return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}`
 }

@@ -30,3 +30,11 @@ export const TRANSACTION_TYPE_LABELS = {
   INVOICE_PAYMENT: 'Pagamento de fatura',
   CHARGE: 'Encargo',
 } as const
+
+/** Estado da fatura, como em "Fatura de outubro, fechada". */
+export const INVOICE_STATE_LABELS = {
+  OPEN: 'aberta',
+  FUTURE: 'futura',
+  CLOSED: 'fechada',
+  PAID: 'paga',
+} as const
