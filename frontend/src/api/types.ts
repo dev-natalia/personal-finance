@@ -52,3 +52,12 @@ export type PaymentGroupVoidOut = Schemas['PaymentGroupVoidOut']
 export type ChargeIn = Schemas['ChargeIn']
 export type PreviewIn = Schemas['PreviewIn']
 export type PurchasePreviewOut = Schemas['PreviewOut']
+
+// Análise
+export type AnalysisSummaryOut = Schemas['AnalysisSummaryOut']
+export type PeriodOut = Schemas['PeriodOut']
+export type CategoryTotalOut = Schemas['CategoryTotalOut']
+export type PlaceTotalOut = Schemas['PlaceTotalOut']
+export type DayTotalOut = Schemas['DayTotalOut']
+export type DaySpendingOut = Schemas['DaySpendingOut']
+export type PlaceDetailOut = Schemas['PlaceDetailOut']
