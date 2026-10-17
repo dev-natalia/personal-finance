@@ -7,7 +7,7 @@ import {
 } from '@tanstack/react-query'
 
 import { normalize } from '../domain/text'
-import { type TransactionQuery, api } from './endpoints'
+import { type AnalysisQuery, type TransactionQuery, api } from './endpoints'
 import type { CategoryKind, PreviewIn } from './types'
 
 export const queryKeys = {
@@ -24,6 +24,8 @@ export const queryKeys = {
   cardInvoices: (cardId: string) => ['cards', cardId, 'invoices'] as const,
   invoice: (invoiceId: string) => ['invoice', invoiceId] as const,
   preview: (cardId: string, body: PreviewIn) => ['cards', cardId, 'preview', body] as const,
+  // Tudo da análise começa com 'analysis' (invalidado junto com o livro-caixa).
+  analysis: (kind: string, params: object) => ['analysis', kind, params] as const,
   cycle: (closingDay: number, dueDay: number, openingDate: string) =>
     ['cards', 'cycle', closingDay, dueDay, openingDate] as const,
 }
@@ -104,6 +106,7 @@ export function useInvalidateLedger(): () => Promise<void> {
       queryClient.invalidateQueries({ queryKey: queryKeys.hints }),
       queryClient.invalidateQueries({ queryKey: ['cards'] }),
       queryClient.invalidateQueries({ queryKey: ['invoice'] }),
+      queryClient.invalidateQueries({ queryKey: ['analysis'] }),
     ])
   }
 }
@@ -157,5 +160,37 @@ export function useCardCycle(input: { closingDay: number; dueDay: number; openin
     queryFn: () => api.cardCycle(input!.closingDay, input!.dueDay, input!.openingDate),
     enabled: input !== null,
     staleTime: Infinity,
+  })
+}
+
+export function useAnalysisSummary(params: AnalysisQuery) {
+  return useQuery({
+    queryKey: queryKeys.analysis('summary', params),
+    queryFn: () => api.analysisSummary(params),
+    placeholderData: keepPreviousData,
+  })
+}
+
+export function useAnalysisDay(params: (AnalysisQuery & { date: string }) | null) {
+  return useQuery({
+    queryKey: queryKeys.analysis('day', params ?? {}),
+    queryFn: () => api.analysisDay(params!),
+    enabled: params !== null,
+  })
+}
+
+export function useAnalysisPlace(key: string, params: Pick<AnalysisQuery, 'mode' | 'source'>) {
+  return useQuery({
+    queryKey: queryKeys.analysis(`place:${key}`, params),
+    queryFn: () => api.analysisPlace(key, params),
+  })
+}
+
+export function useAnalysisPlaceTransactions(key: string, source: string | undefined) {
+  return useInfiniteQuery({
+    queryKey: queryKeys.analysis(`place-transactions:${key}`, { source }),
+    queryFn: ({ pageParam }) => api.analysisPlaceTransactions(key, { source, cursor: pageParam }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.next_cursor ?? undefined,
   })
 }

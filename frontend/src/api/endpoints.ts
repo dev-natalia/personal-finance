@@ -1,6 +1,9 @@
 /** Uma função por endpoint do contrato da API (spec, seção 6). */
 import { apiFetch } from './client'
 import type {
+  AnalysisSummaryOut,
+  DaySpendingOut,
+  PlaceDetailOut,
   AccountArchiveOut,
   AccountIn,
   AccountOut,
@@ -56,6 +59,15 @@ export interface TransactionQuery {
   status?: TransactionStatus | 'ALL'
   cursor?: string
   limit?: number
+}
+
+/** Filtros da análise; `source` = "account:<id>" ou "card:<id>". */
+export interface AnalysisQuery {
+  period?: 'month' | 'week' | 'year'
+  date?: string
+  mode?: 'installments' | 'purchase'
+  source?: string
+  category_id?: string
 }
 
 function query(params: object): string {
@@ -162,6 +174,16 @@ export const api = {
       body: { amount },
     }),
 
+  analysisSummary: (params: AnalysisQuery) =>
+    apiFetch<AnalysisSummaryOut>(`${V1}/analysis/summary${query(params)}`),
+  analysisDay: (params: AnalysisQuery & { date: string }) =>
+    apiFetch<DaySpendingOut[]>(`${V1}/analysis/day${query(params)}`),
+  analysisPlace: (key: string, params: Pick<AnalysisQuery, 'mode' | 'source'>) =>
+    apiFetch<PlaceDetailOut>(`${V1}/analysis/places/${encodeURIComponent(key)}${query(params)}`),
+  analysisPlaceTransactions: (key: string, params: { source?: string; cursor?: string }) =>
+    apiFetch<TransactionPage>(
+      `${V1}/analysis/places/${encodeURIComponent(key)}/transactions${query(params)}`,
+    ),
   monthSummary: (month: string) =>
     apiFetch<MonthSummaryOut>(`${V1}/summaries/month${query({ month })}`),
 }

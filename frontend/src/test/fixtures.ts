@@ -1,5 +1,6 @@
 /** Dados de exemplo para os testes de tela (formato idêntico ao da API). */
 import type {
+  AnalysisSummaryOut,
   BalancesOut,
   CardSummaryOut,
   CategoryOut,
@@ -164,4 +165,35 @@ export function transaction(overrides: Partial<TransactionOut> = {}): Transactio
     voided_at: null,
     ...overrides,
   }
+}
+
+/** Análise de outubro (pelas parcelas): três categorias, três lugares, três dias. */
+export const ANALYSIS_SUMMARY: AnalysisSummaryOut = {
+  period: { kind: 'month', start: '2026-10-01', end: '2026-10-31', has_next: false },
+  total: '270.50',
+  by_category: [
+    { category_id: 'cat-compras', name: 'Compras diversas', amount: '120.00' },
+    { category_id: 'cat-alimentacao', name: 'Alimentação', amount: '90.50' },
+    { category_id: 'cat-mercado', name: 'Mercado', amount: '60.00' },
+  ],
+  by_place: [
+    { key: 'm:merchant-ml', name: 'Mercado Livre', amount: '120.00', purchases: 1, category_name: 'Compras diversas' },
+    { key: 'm:merchant-ifood', name: 'iFood', amount: '90.50', purchases: 3, category_name: 'Alimentação' },
+    { key: 'm:merchant-pao', name: 'Pão de Açúcar', amount: '60.00', purchases: 1, category_name: 'Mercado' },
+  ],
+  by_day: [
+    { day: '2026-10-03', amount: '90.00' },
+    { day: '2026-10-09', amount: '160.00' },
+    { day: '2026-10-15', amount: '20.50' },
+  ],
+  busiest: { day: '2026-10-09', amount: '160.00' },
+}
+
+export const EMPTY_ANALYSIS: AnalysisSummaryOut = {
+  ...ANALYSIS_SUMMARY,
+  total: '0.00',
+  by_category: [],
+  by_place: [],
+  by_day: [],
+  busiest: null,
 }
