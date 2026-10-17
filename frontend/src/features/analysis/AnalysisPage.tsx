@@ -8,6 +8,8 @@ import { formatBRL } from '../../domain/money'
 import { Field } from '../../ui/Field'
 import { Page } from '../../ui/Page'
 import { chipClass, errorTextClass, inputClass, secondaryButtonClass, slipClass } from '../../ui/styles'
+import { PlaceRanking } from './PlaceRanking'
+import { SpendingDonut } from './SpendingDonut'
 import { type PeriodKind, useAnalysisParams } from './useAnalysisParams'
 
 const PERIOD_LABELS: [PeriodKind, string][] = [
@@ -43,6 +45,15 @@ function arrowLabels(period: PeriodOut): { previous: string; next: string } {
   }
 }
 
+/** Modo e cartão/conta levados para a tela do lugar (só quando diferentes do padrão). */
+function placeSearch(mode: string, source: string | null): string {
+  const search = new URLSearchParams()
+  if (mode === 'purchase') search.set('mode', mode)
+  if (source) search.set('source', source)
+  const text = search.toString()
+  return text ? `?${text}` : ''
+}
+
 function isEmpty(summary: AnalysisSummaryOut): boolean {
   return summary.by_day.length === 0 && !/[1-9]/.test(summary.total)
 }
@@ -76,8 +87,17 @@ export function AnalysisPage() {
             <p className="text-ink-soft">Gasto {phraseOf(data.period, currentYear)}</p>
             <p className="tabular text-3xl font-[650]">{formatBRL(data.total)}</p>
           </section>
-          {isEmpty(data) && (
+          {isEmpty(data) ? (
             <p className="mt-4 text-ink-soft">Nenhum gasto {phraseOf(data.period, currentYear)}.</p>
+          ) : (
+            <>
+              <SpendingDonut
+                items={data.by_category}
+                selected={params.categoryId}
+                onSelect={(categoryId) => params.set({ categoryId })}
+              />
+              <PlaceRanking places={data.by_place} search={placeSearch(params.mode, params.source)} />
+            </>
           )}
         </>
       )}

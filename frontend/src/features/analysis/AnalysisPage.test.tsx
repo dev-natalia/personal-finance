@@ -149,3 +149,71 @@ test('analysis page has no accessibility violations', async () => {
   await screen.findByText('Gasto em outubro')
   await expectNoA11yViolations(container)
 })
+
+test('donut legend lists categories with amounts', async () => {
+  mockApi()
+  renderPage()
+  const legend = await screen.findByRole('list', { name: 'Em que você gastou' })
+  const rows = within(legend).getAllByRole('listitem').map((li) => li.textContent)
+  expect(rows).toEqual([
+    'Compras diversasR$ 120,00',
+    'AlimentaçãoR$ 90,50',
+    'MercadoR$ 60,00',
+  ])
+})
+
+test('tapping a category filters places and calendar', async () => {
+  const queries = mockApi()
+  const { user } = renderPage()
+  await user.click(await screen.findByRole('button', { name: 'Filtrar por Alimentação' }))
+  await waitFor(() => expect(last(queries).get('category_id')).toBe('cat-alimentacao'))
+  expect(screen.getByRole('button', { name: 'Filtrar por Alimentação' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  expect(screen.getByTestId('search')).toHaveTextContent('category=cat-alimentacao')
+  await user.click(screen.getByRole('button', { name: 'Limpar filtro' }))
+  await waitFor(() => expect(last(queries).has('category_id')).toBe(false))
+})
+
+test('Outras does not filter', async () => {
+  mockApi(() => ({
+    ...ANALYSIS_SUMMARY,
+    by_category: [
+      ...ANALYSIS_SUMMARY.by_category,
+      { category_id: null, name: 'Outras', amount: '10.00' },
+    ],
+  }))
+  renderPage()
+  const legend = await screen.findByRole('list', { name: 'Em que você gastou' })
+  expect(within(legend).getByText('Outras')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Filtrar por Outras' })).not.toBeInTheDocument()
+})
+
+test('ranking shows five and expands', async () => {
+  const places = Array.from({ length: 7 }, (_, k) => ({
+    key: `d:lugar ${k + 1}`,
+    name: `Lugar ${k + 1}`,
+    amount: `${70 - k * 10}.00`,
+    purchases: k + 1,
+    category_name: 'Mercado',
+  }))
+  mockApi(() => ({ ...ANALYSIS_SUMMARY, by_place: places }))
+  const { user } = renderPage()
+  const ranking = await screen.findByRole('list', { name: 'Onde você mais gastou' })
+  expect(within(ranking).getAllByRole('listitem')).toHaveLength(5)
+  expect(within(ranking).getByText('1 compra · Mercado')).toBeInTheDocument()
+  expect(within(ranking).getByText('2 compras · Mercado')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Ver todos os 7 lugares' }))
+  expect(within(ranking).getAllByRole('listitem')).toHaveLength(7)
+})
+
+test('place links carry mode and source', async () => {
+  mockApi()
+  renderPage('/analise?mode=purchase&source=card:card-nubank')
+  const link = await screen.findByRole('link', { name: 'iFood' })
+  expect(link).toHaveAttribute(
+    'href',
+    '/analise/lugar/m%3Amerchant-ifood?mode=purchase&source=card%3Acard-nubank',
+  )
+})
