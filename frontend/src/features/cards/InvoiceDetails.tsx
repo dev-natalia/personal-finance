@@ -1,4 +1,4 @@
-import { type FormEvent, useId, useState } from 'react'
+import { type FormEvent, useEffect, useId, useRef, useState } from 'react'
 
 import { ApiError } from '../../api/client'
 import { api } from '../../api/endpoints'
@@ -6,7 +6,7 @@ import { useInvalidateLedger, useInvoice } from '../../api/queries'
 import type { InvoiceItemOut, InvoiceSummaryOut, TransactionOut } from '../../api/types'
 import { monthName, shortDate } from '../../domain/dates'
 import { formatBRL } from '../../domain/money'
-import type { Announce } from '../../ui/focus'
+import { type Announce, useFocusOnMount, useInPlace } from '../../ui/focus'
 import { Field } from '../../ui/Field'
 import {
   errorTextClass,
@@ -114,7 +114,7 @@ function paymentGroups(payments: TransactionOut[]): PaymentGroup[] {
 }
 
 function PaymentGroupRow({ group, onMessage }: { group: PaymentGroup; onMessage: Announce }) {
-  const [confirming, setConfirming] = useState(false)
+  const confirming = useInPlace()
   const [error, setError] = useState<string | null>(null)
   const invalidate = useInvalidateLedger()
   const amounts = group.payments.map((p) => formatBRL(p.amount)).join(' + ')
@@ -140,20 +140,19 @@ function PaymentGroupRow({ group, onMessage }: { group: PaymentGroup; onMessage:
         </p>
       ))}
       {group.voidable &&
-        (confirming ? (
-          <div className="flex flex-wrap items-center gap-2 pt-2">
-            <p className="w-full text-sm">
-              Anular este pagamento? O valor volta para a conta e a fatura fica em aberto de novo.
-            </p>
-            <button type="button" onClick={voidGroup} className={primaryButtonClass}>
-              Anular pagamento de {amounts}
-            </button>
-            <button type="button" onClick={() => setConfirming(false)} className={secondaryButtonClass}>
-              Cancelar
-            </button>
-          </div>
+        (confirming.open ? (
+          <VoidConfirmation
+            amounts={amounts}
+            onConfirm={voidGroup}
+            onCancel={() => confirming.close()}
+          />
         ) : (
-          <button type="button" onClick={() => setConfirming(true)} className={textButton}>
+          <button
+            ref={confirming.buttonRef}
+            type="button"
+            onClick={confirming.show}
+            className={textButton}
+          >
             Anular pagamento
           </button>
         ))}
@@ -166,21 +165,55 @@ function PaymentGroupRow({ group, onMessage }: { group: PaymentGroup; onMessage:
   )
 }
 
+function VoidConfirmation({
+  amounts,
+  onConfirm,
+  onCancel,
+}: {
+  amounts: string
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  const questionRef = useFocusOnMount<HTMLParagraphElement>()
+  return (
+    <div className="flex flex-wrap items-center gap-2 pt-2">
+      <p ref={questionRef} tabIndex={-1} className="w-full text-sm">
+        Anular este pagamento? O valor volta para a conta e a fatura fica em aberto de novo.
+      </p>
+      <button type="button" onClick={onConfirm} className={primaryButtonClass}>
+        Anular pagamento de {amounts}
+      </button>
+      <button type="button" onClick={onCancel} className={secondaryButtonClass}>
+        Cancelar
+      </button>
+    </div>
+  )
+}
+
 /** "Editar datas": quando o banco muda o fechamento ou o vencimento de uma fatura. */
 function InvoiceDates({ invoice }: { invoice: InvoiceSummaryOut }) {
   const id = useId()
-  const [editing, setEditing] = useState(false)
+  const editing = useInPlace()
+  const closingRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (editing.open) closingRef.current?.focus()
+  }, [editing.open])
   const [closing, setClosing] = useState(invoice.closing_date)
   const [due, setDue] = useState(invoice.due_date)
   const [error, setError] = useState<string | null>(null)
   const invalidate = useInvalidateLedger()
 
-  if (!editing || invoice.id === null) {
+  if (!editing.open || invoice.id === null) {
     return (
       <p className="mt-2 flex flex-wrap items-center gap-x-2 text-sm text-ink-soft">
         Fechamento {shortDate(invoice.closing_date)}, vencimento {shortDate(invoice.due_date)}
         {invoice.id !== null && (
-          <button type="button" onClick={() => setEditing(true)} className={textButton}>
+          <button
+            ref={editing.buttonRef}
+            type="button"
+            onClick={editing.show}
+            className={textButton}
+          >
             Editar datas
           </button>
         )}
@@ -200,7 +233,7 @@ function InvoiceDates({ invoice }: { invoice: InvoiceSummaryOut }) {
         await api.updateInvoice(invoiceId, patch)
         await invalidate()
       }
-      setEditing(false)
+      editing.close()
     } catch (err) {
       setError(messageOf(err))
     }
@@ -215,6 +248,7 @@ function InvoiceDates({ invoice }: { invoice: InvoiceSummaryOut }) {
       <div className="grid grid-cols-2 gap-3">
         <Field id={`${id}-closing`} label="Fechamento">
           <input
+            ref={closingRef}
             id={`${id}-closing`}
             type="date"
             value={closing}
@@ -241,7 +275,7 @@ function InvoiceDates({ invoice }: { invoice: InvoiceSummaryOut }) {
         <button type="submit" className={primaryButtonClass}>
           Salvar datas
         </button>
-        <button type="button" onClick={() => setEditing(false)} className={secondaryButtonClass}>
+        <button type="button" onClick={() => editing.close()} className={secondaryButtonClass}>
           Cancelar
         </button>
       </div>

@@ -1,9 +1,9 @@
-import { useId, useState } from 'react'
+import { useId } from 'react'
 import { Link } from 'react-router'
 
 import { useCardsSummary } from '../../api/queries'
 import { formatBRL } from '../../domain/money'
-import type { Announce } from '../../ui/focus'
+import { type Announce, useInPlace } from '../../ui/focus'
 import { ledgerRowClass, secondaryButtonClass } from '../../ui/styles'
 import { NewCardForm } from './NewCardForm'
 
@@ -11,7 +11,7 @@ import { NewCardForm } from './NewCardForm'
 export function CardsSection({ onMessage }: { onMessage: Announce }) {
   const id = useId()
   const summary = useCardsSummary()
-  const [adding, setAdding] = useState(false)
+  const adding = useInPlace()
   const cards = summary.data ?? []
 
   return (
@@ -19,7 +19,7 @@ export function CardsSection({ onMessage }: { onMessage: Announce }) {
       <h2 id={id} className="mb-1 text-lg font-[650]">
         Cartões
       </h2>
-      {summary.isSuccess && cards.length === 0 && !adding && (
+      {summary.isSuccess && cards.length === 0 && !adding.open && (
         <p className="py-2 text-ink-soft">
           Nenhum cartão ainda. Adicione o seu para ver a fatura e o limite a cada compra.
         </p>
@@ -39,16 +39,21 @@ export function CardsSection({ onMessage }: { onMessage: Announce }) {
           </li>
         ))}
       </ul>
-      {adding ? (
+      {adding.open ? (
         <NewCardForm
           onCreated={(name) => {
-            setAdding(false)
+            adding.close()
             onMessage(`Cartão ${name} criado.`)
           }}
-          onCancel={() => setAdding(false)}
+          onCancel={() => adding.close()}
         />
       ) : (
-        <button type="button" onClick={() => setAdding(true)} className={secondaryButtonClass}>
+        <button
+          ref={adding.buttonRef}
+          type="button"
+          onClick={adding.show}
+          className={secondaryButtonClass}
+        >
           Adicionar cartão
         </button>
       )}

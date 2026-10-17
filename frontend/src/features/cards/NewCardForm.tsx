@@ -6,6 +6,7 @@ import { useEntryHints, useInvalidateLedger } from '../../api/queries'
 import type { CardIn, ExpenseIn } from '../../api/types'
 import { isPositive, tryParseMoney } from '../../domain/money'
 import { Field, invalid } from '../../ui/Field'
+import { useFocusOnMount } from '../../ui/focus'
 import { MoneyInput } from '../../ui/MoneyInput'
 import {
   errorTextClass,
@@ -91,6 +92,7 @@ export function NewCardForm({ onCreated, onCancel }: Props) {
   const id = useId()
   const hints = useEntryHints()
   const invalidate = useInvalidateLedger()
+  const nameRef = useFocusOnMount<HTMLInputElement>()
   const [name, setName] = useState('')
   const [limit, setLimit] = useState('')
   const [closingDay, setClosingDay] = useState('')
@@ -205,6 +207,7 @@ export function NewCardForm({ onCreated, onCancel }: Props) {
         <legend className="sr-only">Cartão</legend>
         <Field id={`${id}-name`} label="Nome do cartão" error={errors.name}>
           <input
+            ref={nameRef}
             id={`${id}-name`}
             value={name}
             onChange={(e) => setName(e.target.value)}

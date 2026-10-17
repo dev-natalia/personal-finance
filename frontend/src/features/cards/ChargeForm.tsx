@@ -1,4 +1,4 @@
-import { type FormEvent, useId, useState } from 'react'
+import { type FormEvent, useEffect, useId, useState } from 'react'
 
 import { ApiError } from '../../api/client'
 import { api } from '../../api/endpoints'
@@ -28,6 +28,8 @@ export function ChargeForm({ cardId, onDone, onCancel }: Props) {
   const [formError, setFormError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   const occurredOn = date ?? hints.data?.today ?? ''
+  // Abre no lugar do botão: o foco vai para o primeiro campo.
+  useEffect(() => document.getElementById(`${id}-amount`)?.focus(), [id])
 
   async function submit(event: FormEvent) {
     event.preventDefault()

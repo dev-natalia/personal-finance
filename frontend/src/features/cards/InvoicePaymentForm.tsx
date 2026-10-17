@@ -16,6 +16,7 @@ import {
   tryParseMoney,
 } from '../../domain/money'
 import { Field, invalid } from '../../ui/Field'
+import { useFocusOnMount } from '../../ui/focus'
 import { MoneyInput } from '../../ui/MoneyInput'
 import {
   errorTextClass,
@@ -55,6 +56,7 @@ export function InvoicePaymentForm({ invoice, cardName, onDone, onCancel }: Prop
   const accounts = useAccounts()
   const invalidate = useInvalidateLedger()
   const keyFor = useIdempotencyKey()
+  const headingRef = useFocusOnMount<HTMLHeadingElement>()
   const month = monthName(invoice.reference_month)
   const balance = invoice.balance
 
@@ -147,7 +149,9 @@ export function InvoicePaymentForm({ invoice, cardName, onDone, onCancel }: Prop
       noValidate
       className="mt-4 flex flex-col gap-3 border-t border-rule pt-4"
     >
-      <h2 className="text-lg font-[650]">Pagar fatura de {month}</h2>
+      <h2 ref={headingRef} tabIndex={-1} className="text-lg font-[650]">
+        Pagar fatura de {month}
+      </h2>
       <p className="tabular">Total {formatBRLNoBreak(balance)}</p>
 
       <fieldset className="flex flex-col gap-3">

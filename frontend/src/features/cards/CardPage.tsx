@@ -8,7 +8,7 @@ import type { CardOut, CardSummaryOut, InvoiceSummaryOut } from '../../api/types
 import { addDays, monthName, shortDate } from '../../domain/dates'
 import { INVOICE_STATE_LABELS } from '../../domain/labels'
 import { formatBRL, formatBRLNoBreak, isPositive, tryParseMoney } from '../../domain/money'
-import { type Announce, useStatus } from '../../ui/focus'
+import { type Announce, useFocusOnMount, useInPlace, useStatus } from '../../ui/focus'
 import { Field } from '../../ui/Field'
 import { MoneyInput } from '../../ui/MoneyInput'
 import { Page } from '../../ui/Page'
@@ -146,11 +146,16 @@ function PayButton({
   invoice: InvoiceSummaryOut
   onMessage: Announce
 }) {
-  const [paying, setPaying] = useState(false)
+  const paying = useInPlace()
   const label = `Pagar fatura de ${monthName(invoice.reference_month)}`
-  if (!paying) {
+  if (!paying.open) {
     return (
-      <button type="button" onClick={() => setPaying(true)} className={`${primaryButtonClass} mt-4`}>
+      <button
+        ref={paying.buttonRef}
+        type="button"
+        onClick={paying.show}
+        className={`${primaryButtonClass} mt-4`}
+      >
         {label}
       </button>
     )
@@ -159,9 +164,9 @@ function PayButton({
     <InvoicePaymentForm
       invoice={invoice}
       cardName={card.name}
-      onCancel={() => setPaying(false)}
+      onCancel={() => paying.close()}
       onDone={(message) => {
-        setPaying(false)
+        paying.close({ keepFocus: true })
         onMessage(message, { focus: true })
       }}
     />
@@ -179,7 +184,7 @@ function PayableInvoice({
   onMessage: Announce
 }) {
   const headingId = useId()
-  const [charging, setCharging] = useState(false)
+  const charging = useInPlace()
   // Compra esquecida entra na véspera do fechamento; antes do início do cartão o backend
   // recusa (a fatura fechada do cadastro é só o total informado).
   const purchaseDate = addDays(invoice.closing_date, -1)
@@ -210,18 +215,23 @@ function PayableInvoice({
             Registrar compra
           </Link>
         )}
-        {!charging && (
-          <button type="button" onClick={() => setCharging(true)} className={textButton}>
+        {!charging.open && (
+          <button
+            ref={charging.buttonRef}
+            type="button"
+            onClick={charging.show}
+            className={textButton}
+          >
             Registrar encargo
           </button>
         )}
       </div>
-      {charging && (
+      {charging.open && (
         <ChargeForm
           cardId={card.id}
-          onCancel={() => setCharging(false)}
+          onCancel={() => charging.close()}
           onDone={(message) => {
-            setCharging(false)
+            charging.close()
             onMessage(message)
           }}
         />
@@ -382,7 +392,8 @@ function PreviousInvoice({
 }
 
 function CardFooter({ card, onMessage }: { card: CardOut; onMessage: Announce }) {
-  const [mode, setMode] = useState<'view' | 'edit' | 'archive'>('view')
+  const editing = useInPlace()
+  const archiving = useInPlace()
   const [error, setError] = useState<string | null>(null)
   const invalidate = useInvalidateLedger()
   const navigate = useNavigate()
@@ -400,35 +411,34 @@ function CardFooter({ card, onMessage }: { card: CardOut; onMessage: Announce })
 
   return (
     <footer className="mt-10 border-t border-rule pt-4">
-      {mode === 'edit' && (
+      {editing.open && (
         <EditCardForm
           card={card}
           onDone={(message) => {
-            setMode('view')
+            editing.close()
             if (message) onMessage(message)
           }}
         />
       )}
-      {mode === 'archive' && (
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="w-full text-sm">
-            Arquivar {card.name}? Ele some das listas e não aceita novas compras; as faturas
-            continuam no histórico.
-          </p>
-          <button type="button" onClick={archive} className={primaryButtonClass}>
-            Arquivar {card.name}
-          </button>
-          <button type="button" onClick={() => setMode('view')} className={secondaryButtonClass}>
-            Cancelar
-          </button>
-        </div>
+      {archiving.open && (
+        <ArchiveConfirmation card={card} onConfirm={archive} onCancel={() => archiving.close()} />
       )}
-      {mode === 'view' && (
+      {!editing.open && !archiving.open && (
         <div className="flex flex-wrap gap-1">
-          <button type="button" onClick={() => setMode('edit')} className={textButton}>
+          <button
+            ref={editing.buttonRef}
+            type="button"
+            onClick={editing.show}
+            className={textButton}
+          >
             Editar cartão
           </button>
-          <button type="button" onClick={() => setMode('archive')} className={textButton}>
+          <button
+            ref={archiving.buttonRef}
+            type="button"
+            onClick={archiving.show}
+            className={textButton}
+          >
             Arquivar cartão
           </button>
         </div>
@@ -442,6 +452,33 @@ function CardFooter({ card, onMessage }: { card: CardOut; onMessage: Announce })
   )
 }
 
+function ArchiveConfirmation({
+  card,
+  onConfirm,
+  onCancel,
+}: {
+  card: CardOut
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  // A pergunta recebe o foco: o leitor de tela lê o que vai acontecer antes dos botões.
+  const questionRef = useFocusOnMount<HTMLParagraphElement>()
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <p ref={questionRef} tabIndex={-1} className="w-full text-sm">
+        Arquivar {card.name}? Ele some das listas e não aceita novas compras; as faturas
+        continuam no histórico.
+      </p>
+      <button type="button" onClick={onConfirm} className={primaryButtonClass}>
+        Arquivar {card.name}
+      </button>
+      <button type="button" onClick={onCancel} className={secondaryButtonClass}>
+        Cancelar
+      </button>
+    </div>
+  )
+}
+
 /** Envia só o que mudou: mudar os dias recalcula as faturas abertas no servidor. */
 function EditCardForm({
   card,
@@ -452,6 +489,7 @@ function EditCardForm({
 }) {
   const id = useId()
   const invalidate = useInvalidateLedger()
+  const nameRef = useFocusOnMount<HTMLInputElement>()
   const [name, setName] = useState(card.name)
   const [limit, setLimit] = useState(inputAmount(card.credit_limit))
   const [closingDay, setClosingDay] = useState(String(card.closing_day))
@@ -497,6 +535,7 @@ function EditCardForm({
     <form aria-label="Editar cartão" onSubmit={submit} noValidate className="flex flex-col gap-3">
       <Field id={`${id}-name`} label="Nome do cartão" error={errors.name}>
         <input
+          ref={nameRef}
           id={`${id}-name`}
           value={name}
           onChange={(e) => setName(e.target.value)}

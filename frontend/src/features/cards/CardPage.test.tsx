@@ -300,3 +300,45 @@ test('closed invoice from the opening state offers no purchase shortcut', async 
     ),
   ).toBeInTheDocument()
 })
+
+test('keyboard focus follows the forms that open in place', async () => {
+  mockApi()
+  server.use(http.get('/api/v1/accounts', () => HttpResponse.json([])))
+  const { user } = renderPage()
+
+  await user.click(await screen.findByRole('button', { name: 'Pagar fatura de outubro' }))
+  expect(screen.getByRole('heading', { name: 'Pagar fatura de outubro' })).toHaveFocus()
+  await user.click(screen.getByRole('button', { name: 'Cancelar' }))
+  expect(screen.getByRole('button', { name: 'Pagar fatura de outubro' })).toHaveFocus()
+
+  await user.click(screen.getByRole('button', { name: 'Registrar encargo' }))
+  expect(screen.getByLabelText('Valor')).toHaveFocus()
+  await user.click(screen.getByRole('button', { name: 'Cancelar' }))
+  expect(screen.getByRole('button', { name: 'Registrar encargo' })).toHaveFocus()
+
+  await user.click(screen.getByRole('button', { name: 'Editar cartão' }))
+  expect(screen.getByLabelText('Nome do cartão')).toHaveFocus()
+  await user.click(screen.getByRole('button', { name: 'Cancelar' }))
+  expect(screen.getByRole('button', { name: 'Editar cartão' })).toHaveFocus()
+
+  await user.click(screen.getByRole('button', { name: 'Arquivar cartão' }))
+  expect(screen.getByText(/^Arquivar Nubank\?/)).toHaveFocus()
+  await user.click(screen.getByRole('button', { name: 'Cancelar' }))
+  expect(screen.getByRole('button', { name: 'Arquivar cartão' })).toHaveFocus()
+})
+
+test('keyboard focus in previous invoice actions', async () => {
+  mockApi()
+  const { user } = renderPage()
+  await user.click(await screen.findByText('Faturas anteriores'))
+  await user.click(await screen.findByText('Fatura de outubro, paga'))
+  await user.click(await screen.findByRole('button', { name: 'Anular pagamento' }))
+  expect(screen.getByText(/^Anular este pagamento\?/)).toHaveFocus()
+  await user.click(screen.getByRole('button', { name: 'Cancelar' }))
+  expect(screen.getByRole('button', { name: 'Anular pagamento' })).toHaveFocus()
+
+  await user.click(screen.getByRole('button', { name: 'Editar datas' }))
+  expect(screen.getByLabelText('Fechamento')).toHaveFocus()
+  await user.click(screen.getByRole('button', { name: 'Cancelar' }))
+  expect(screen.getByRole('button', { name: 'Editar datas' })).toHaveFocus()
+})

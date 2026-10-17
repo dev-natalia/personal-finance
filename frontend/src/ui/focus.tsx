@@ -12,7 +12,42 @@ export function useFocusOnReturn(mode: string, target: RefObject<HTMLElement | n
   }, [mode, target])
 }
 
-export type Announce = (text: string, options?: { focus?: boolean }) => void
+/** Foco no elemento assim que ele aparece (formulário ou confirmação aberta no lugar do botão). */
+export function useFocusOnMount<T extends HTMLElement>(): RefObject<T | null> {
+  const ref = useRef<T>(null)
+  useEffect(() => ref.current?.focus(), [])
+  return ref
+}
+
+/**
+ * Botão que dá lugar a um formulário na própria tela. `close()` fecha e devolve o foco ao
+ * botão; `close({ keepFocus: true })` só fecha, para quem leva o foco à mensagem de resultado.
+ */
+export function useInPlace(): {
+  open: boolean
+  show: () => void
+  close: (options?: { keepFocus?: boolean }) => void
+  buttonRef: RefObject<HTMLButtonElement | null>
+} {
+  const [open, setOpen] = useState(false)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const returnFocus = useRef(false)
+  useEffect(() => {
+    if (!open && returnFocus.current) buttonRef.current?.focus()
+    returnFocus.current = false
+  }, [open])
+  return {
+    open,
+    show: () => setOpen(true),
+    close: (options = {}) => {
+      returnFocus.current = !options.keepFocus
+      setOpen(false)
+    },
+    buttonRef,
+  }
+}
+
+export type Announce =(text: string, options?: { focus?: boolean }) => void
 
 /**
  * Mensagem de resultado da tela (`role="status"`). Com `focus`, o foco vai até ela: é o que

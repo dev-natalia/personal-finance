@@ -187,3 +187,13 @@ test('shows the message left by the card page after archiving', async () => {
   })
   expect(await screen.findByRole('status')).toHaveTextContent('Cartão Nubank arquivado.')
 })
+
+test('new card form takes the focus and gives it back on cancel', async () => {
+  mockAccounts()
+  const user = userEvent.setup()
+  renderWithProviders(<AccountsPage />, { route: '/contas' })
+  await user.click(await screen.findByRole('button', { name: 'Adicionar cartão' }))
+  expect(screen.getByLabelText('Nome do cartão')).toHaveFocus()
+  await user.click(screen.getByRole('button', { name: 'Cancelar' }))
+  expect(screen.getByRole('button', { name: 'Adicionar cartão' })).toHaveFocus()
+})
