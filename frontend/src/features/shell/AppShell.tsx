@@ -3,6 +3,7 @@ import { NavLink, Outlet } from 'react-router'
 const SECTIONS = [
   { to: '/', label: 'Início', end: true },
   { to: '/lancamentos', label: 'Lançamentos', end: false },
+  { to: '/analise', label: 'Análise', end: false },
   { to: '/contas', label: 'Contas', end: false },
   { to: '/mais', label: 'Mais', end: false },
 ]

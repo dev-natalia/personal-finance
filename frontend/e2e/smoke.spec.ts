@@ -106,3 +106,42 @@ test('card: opening, installment purchase and payment', async ({ page }) => {
   await expect(page.getByRole('status')).toHaveText('Pagamento registrado.')
   await expect(page.getByRole('button', { name: /^Pagar fatura de / })).toHaveCount(0)
 })
+
+test('analysis: month by category and place', async ({ page }) => {
+  test.skip(!email || !password, 'Defina E2E_EMAIL e E2E_PASSWORD (ou use scripts/e2e.sh).')
+
+  await page.goto('/')
+  await expect(page).toHaveURL(/\/login$/)
+  await page.getByLabel('E-mail').fill(email!)
+  await page.getByLabel('Senha').fill(password!)
+  await page.getByRole('button', { name: 'Entrar' }).click()
+  await expect(page.getByRole('heading', { name: 'Início' })).toBeAttached()
+
+  await page.getByRole('link', { name: 'Contas' }).click()
+  const account = page.getByRole('form', { name: 'Nova conta' })
+  await account.getByLabel('Nome').fill('Inter')
+  await account.getByLabel('Saldo de abertura').fill('500,00')
+  await account.getByRole('button', { name: 'Criar conta' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Conta Inter criada.' })).toBeVisible()
+
+  await page.getByRole('link', { name: 'Início' }).click()
+  await page.getByRole('textbox', { name: 'Novo lançamento' }).fill('38 ifood pix inter')
+  await page.getByRole('button', { name: 'Enviar' }).click()
+  await page.getByRole('button', { name: 'Confirmar' }).click()
+  await expect(
+    page.getByTestId('session-entries').getByText(/^Despesa registrada: R\$ 38,00/),
+  ).toBeVisible()
+
+  await page.getByRole('link', { name: 'Análise' }).click()
+  await expect(page.getByRole('heading', { name: 'Análise' })).toBeVisible()
+  await expect(page.getByText(/^Gasto em /)).toBeVisible()
+  await expect(page.getByRole('list', { name: 'Em que você gastou' })).toBeVisible()
+  const ranking = page.getByRole('list', { name: 'Onde você mais gastou' })
+  await expect(ranking.getByRole('link', { name: 'ifood' })).toBeVisible()
+  await expect(page.getByRole('table', { name: 'Seus dias' })).toBeVisible()
+
+  await ranking.getByRole('link', { name: 'ifood' }).click()
+  await expect(page.getByRole('heading', { name: 'ifood' })).toBeVisible()
+  await expect(page.getByRole('list', { name: 'Totais do lugar' }).getByRole('listitem')).toHaveCount(3)
+  await expect(page.getByRole('region', { name: 'Compras' }).getByText('−38,00')).toBeVisible()
+})

@@ -9,7 +9,7 @@ from decimal import Decimal
 from typing import Any, assert_never
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -642,19 +642,24 @@ def _change_category(
     _learn(merchant, category)
 
 
-def _sync_refund_categories(session: Session, ctx: RequestContext, expense: Transaction) -> None:
-    """Estornos acompanham a categoria da despesa, para o consumo por categoria fechar."""
+def _sync_refunds(session: Session, ctx: RequestContext, expense: Transaction) -> None:
+    """Estornos acompanham a categoria e o estabelecimento da despesa, para o consumo por
+    categoria e por lugar fechar."""
     refunds = list(
         session.scalars(
             select(Transaction).where(
                 Transaction.refund_of_id == expense.id,
-                Transaction.category_id != expense.category_id,
+                or_(
+                    Transaction.category_id != expense.category_id,
+                    Transaction.merchant_id.is_distinct_from(expense.merchant_id),
+                ),
             )
         )
     )
     for refund in refunds:
         before = snapshot(refund)
         refund.category_id = expense.category_id
+        refund.merchant_id = expense.merchant_id
         record(session, ctx, refund, AuditAction.UPDATE, before)
 
 
@@ -787,8 +792,8 @@ def update_transaction(
         else:
             invoices.bill_purchase(session, ctx, tx, card)
         return WriteResult(tx, notices=_card_limit_notices(session, ctx, card))
-    if tx.type is TransactionType.EXPENSE and category_changed:
-        _sync_refund_categories(session, ctx, tx)
+    if tx.type is TransactionType.EXPENSE and (category_changed or "merchant" in changes):
+        _sync_refunds(session, ctx, tx)
     as_of = max(ctx.today(), tx.occurred_on)
     notices = _negative_balance_notices(session, ctx, _involved_accounts(tx), as_of)
     return WriteResult(tx, notices=notices)

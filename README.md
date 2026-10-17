@@ -5,6 +5,7 @@ Aplicação pessoal de controle financeiro com registro por frases curtas e, fut
 - Decisões e regras financeiras: `docs/superpowers/specs/2026-10-15-visao-geral-design.md`
 - Subprojeto 1 (fundação e lançamentos): `docs/superpowers/specs/2026-10-15-fundacao-e-lancamentos-design.md`
 - Subprojeto 2 (cartões e faturas): `docs/superpowers/specs/2026-10-16-cartoes-e-faturas-design.md`
+- Subprojeto 3 (análise): `docs/superpowers/specs/2026-10-17-analise-design.md`
 
 ## Requisitos
 
@@ -95,6 +96,20 @@ Em produção, defina `DATABASE_URL`, `SECRET_KEY`, `APP_ORIGIN` (o endereço HT
 **Pagamento.** "Pagar fatura de {mês}" aceita até 5 contas de origem. Se faltar algo numa fatura fechada: só pagar a parte, levar o restante para a próxima fatura, ou parcelar com o cartão (os juros, a diferença entre parcelas e restante, viram um encargo). "Anular pagamento" desfaz o pagamento inteiro, inclusive o parcelamento.
 
 **Estorno e anulação.** O estorno de uma compra no cartão vira crédito na fatura: cancela parcelas inteiras a partir da última (só em faturas não fechadas) e o resto entra como crédito na fatura aberta. Fatura fechada nunca muda: anular ou editar uma compra que já está nela é recusado ("Registre um estorno").
+
+## Análise
+
+A aba **Análise** mostra para onde foi o dinheiro, somando contas, cartões, Pix e dinheiro. Só gastos: receitas, transferências entre contas e pagamentos de fatura não entram; estornos abatem do lugar e da categoria da compra.
+
+- **Período**: Mês, Semana (de segunda a domingo) ou Ano, com setas para o anterior e o seguinte. O mês e a semana atuais mostram tudo o que já está registrado para eles; o ano atual vai até o fim do mês atual.
+- **Pelas parcelas / Pela compra**: no padrão, cada parcela conta no seu mês (o celular de R$ 1.200 em 6x pesa R$ 200 por mês, no mesmo dia do mês da compra); "pela compra" põe o valor inteiro na data da compra. O total do mês pelas parcelas é o mesmo consumo do mês do resto do app.
+- **Em que você gastou**: rosca por categoria (as 5 maiores e "Outras"); tocar numa categoria filtra os lugares e o calendário.
+- **Onde você mais gastou**: lugares do maior para o menor, com número de compras e categoria. Lançamento sem estabelecimento (um encargo "IOF") aparece pelo nome.
+- **Seus dias**: calendário mais escuro onde se gastou mais, com o dia mais caro e os dias sem gasto; tocar num dia lista o que foi gasto nele.
+- **Filtro "Cartão ou conta"** (arquivados inclusive) e o atalho "Ver análise deste cartão" na tela do cartão.
+- **Tela do lugar**: esta semana, este mês e este ano, média por compra e todas as compras de lá, com filtro por cartão ou conta.
+
+Período, modo e filtros ficam na URL: voltar ou recarregar mantém a vista.
 
 ## Instalando no celular
 

@@ -9,10 +9,25 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
+from enum import StrEnum
+from typing import Any, Literal
 from uuid import UUID
 
-from sqlalchemy import and_, case, func, or_, select, union_all
-from sqlalchemy.orm import Session
+from sqlalchemy import (
+    Date,
+    Integer,
+    String,
+    Subquery,
+    and_,
+    case,
+    cast,
+    func,
+    literal,
+    or_,
+    select,
+    union_all,
+)
+from sqlalchemy.orm import Session, aliased
 
 from app.domain.dates import month_range
 from app.domain.errors import RuleViolation
@@ -107,6 +122,150 @@ def archived_balance(session: Session, user_id: UUID, as_of: date) -> Decimal:
     return _balances_by_archived(session, user_id, as_of, archived=True)
 
 
+# --- gasto -------------------------------------------------------------------------------------
+
+
+class SpendingMode(StrEnum):
+    """Como uma compra parcelada conta no tempo."""
+
+    INSTALLMENTS = "installments"  # cada parcela no seu mês de consumo (A3)
+    PURCHASE = "purchase"  # o valor inteiro na data da compra
+
+
+@dataclass(frozen=True)
+class Source:
+    """Filtro "só o que passou por esta conta ou este cartão"."""
+
+    kind: Literal["account", "card"]
+    id: UUID
+
+
+def _installment_day(consumption_month: Any, purchase_day: Any) -> Any:
+    """Dia da parcela: o mesmo dia do mês da compra, no mês de consumo; dia inexistente vira o
+    último dia do mês (A7)."""
+    days = cast(func.extract("day", purchase_day), Integer) - 1
+    same_day = cast(consumption_month + func.make_interval(0, 0, 0, days), Date)
+    last_day = cast(
+        consumption_month + func.make_interval(0, 1) - func.make_interval(0, 0, 0, 1), Date
+    )
+    return func.least(same_day, last_day)
+
+
+def spending_rows(
+    user_id: UUID,
+    start: date,
+    end: date,
+    *,
+    mode: SpendingMode = SpendingMode.INSTALLMENTS,
+    source: Source | None = None,
+    category_id: UUID | None = None,
+) -> Subquery:
+    """Linhas de gasto entre `start` e `end` (inclusivos). Única definição de consumo.
+
+    Gasto = despesas via conta e no cartão, encargos do cartão e estornos (negativos). Modo
+    parcelas: compra parcelada conta por parcela ativa, no dia equivalente do mês de consumo;
+    estorno no cartão abate só o que não cancelou parcelas (parcela cancelada já deixa de
+    contar no próprio mês). Modo compra: toda despesa pelo valor inteiro na data; estorno
+    abate o valor inteiro. Transferências, receitas, pagamentos de fatura, saldos de fatura e
+    anulados nunca entram.
+
+    Colunas: transaction_id, day, amount, category_id, merchant_id, place_key, place_name,
+    counts_as_purchase (despesa ou encargo; falso para estorno), account_id, card_id. O lugar
+    do estorno é o da compra original (mesmo sem estabelecimento, pela descrição dela).
+    """
+    filters = [Transaction.user_id == user_id, _CONFIRMED]
+    if source is not None:
+        column = Transaction.account_id if source.kind == "account" else Transaction.card_id
+        filters.append(column == source.id)
+    if category_id is not None:
+        filters.append(Transaction.category_id == category_id)
+
+    original = aliased(Transaction)
+    merchant_id = func.coalesce(Transaction.merchant_id, original.merchant_id)
+    description = func.coalesce(original.description, Transaction.description)
+    place_key = case(
+        (merchant_id.is_not(None), literal("m:") + cast(merchant_id, String)),
+        else_=literal("d:") + func.lower(func.trim(description)),
+    )
+    place_name = func.coalesce(Merchant.name, description)
+    is_refund = Transaction.type == TransactionType.REFUND
+
+    def columns(day: Any, amount: Any) -> list[Any]:
+        return [
+            Transaction.id.label("transaction_id"),
+            day.label("day"),
+            amount.label("amount"),
+            Transaction.category_id.label("category_id"),
+            merchant_id.label("merchant_id"),
+            place_key.label("place_key"),
+            place_name.label("place_name"),
+            (~is_refund).label("counts_as_purchase"),
+            Transaction.account_id.label("account_id"),
+            Transaction.card_id.label("card_id"),
+        ]
+
+    by_date_types = Transaction.type.in_(
+        [TransactionType.EXPENSE, TransactionType.CHARGE, TransactionType.REFUND]
+    )
+    if mode is SpendingMode.PURCHASE:
+        return (
+            select(
+                *columns(
+                    Transaction.occurred_on,
+                    case((is_refund, -Transaction.amount), else_=Transaction.amount),
+                )
+            )
+            .outerjoin(original, original.id == Transaction.refund_of_id)
+            .outerjoin(Merchant, Merchant.id == merchant_id)
+            .where(*filters, by_date_types, Transaction.occurred_on.between(start, end))
+            .subquery()
+        )
+
+    cancelled = (
+        select(func.coalesce(func.sum(InvoiceItem.amount), 0))
+        .where(InvoiceItem.cancelled_by_id == Transaction.id)
+        .scalar_subquery()
+    )
+    by_date = (
+        select(
+            *columns(
+                Transaction.occurred_on,
+                case((is_refund, -(Transaction.amount - cancelled)), else_=Transaction.amount),
+            )
+        )
+        .outerjoin(original, original.id == Transaction.refund_of_id)
+        .outerjoin(Merchant, Merchant.id == merchant_id)
+        .where(
+            *filters,
+            Transaction.occurred_on.between(start, end),
+            or_(
+                and_(
+                    Transaction.type == TransactionType.EXPENSE, Transaction.installments.is_(None)
+                ),
+                Transaction.type.in_([TransactionType.CHARGE, TransactionType.REFUND]),
+            ),
+        )
+    )
+    day = _installment_day(InvoiceItem.consumption_month, Transaction.occurred_on)
+    installments = (
+        select(*columns(day, InvoiceItem.amount))
+        .select_from(InvoiceItem)
+        .join(Transaction, Transaction.id == InvoiceItem.transaction_id)
+        .outerjoin(original, original.id == Transaction.refund_of_id)
+        .outerjoin(Merchant, Merchant.id == merchant_id)
+        .where(
+            *filters,
+            Transaction.installments.is_not(None),
+            InvoiceItem.kind == InvoiceItemKind.PURCHASE,
+            InvoiceItem.status == ItemStatus.ACTIVE,
+            # Poda barata pelo mês de consumo (o dia é calculado e não usa índice).
+            InvoiceItem.consumption_month.between(start.replace(day=1), end),
+            day.between(start, end),
+        )
+    )
+    return union_all(by_date, installments).subquery()
+
+
 @dataclass(frozen=True)
 class CategoryAmount:
     category_id: UUID
@@ -126,14 +285,7 @@ class MonthSummary:
 def month_summary(session: Session, user_id: UUID, year: int, month: int) -> MonthSummary:
     """Receitas e consumo do mês, por categoria (só lançamentos confirmados).
 
-    Consumo do mês =
-        + despesas via conta e despesas à vista no cartão, pela data
-        + parcelas ativas de compras parceladas no cartão, pelo mês de cada parcela (A3)
-        + encargos do cartão, pela data
-        − estornos via conta, pela data
-        − estornos no cartão, pela data, sem o valor das parcelas que cada um cancelou
-          (parcela cancelada já deixa de contar no seu próprio mês)
-
+    Consumo do mês = soma de `spending_rows` do mês no modo parcelas (ver lá a regra).
     Transferências, pagamentos de fatura e saldos iniciais/levados adiante nunca entram.
     """
     start, end = month_range(year, month)
@@ -142,41 +294,7 @@ def month_summary(session: Session, user_id: UUID, year: int, month: int) -> Mon
         _CONFIRMED,
         Transaction.occurred_on.between(start, end),
     )
-    cancelled = (
-        select(func.coalesce(func.sum(InvoiceItem.amount), 0))
-        .where(InvoiceItem.cancelled_by_id == Transaction.id)
-        .scalar_subquery()
-    )
-    by_date = select(
-        Transaction.category_id.label("category_id"),
-        case(
-            (Transaction.type == TransactionType.REFUND, -(Transaction.amount - cancelled)),
-            else_=Transaction.amount,
-        ).label("amount"),
-    ).where(
-        *in_month,
-        or_(
-            and_(Transaction.type == TransactionType.EXPENSE, Transaction.installments.is_(None)),
-            Transaction.type.in_([TransactionType.CHARGE, TransactionType.REFUND]),
-        ),
-    )
-    installments = (
-        select(
-            Transaction.category_id.label("category_id"),
-            InvoiceItem.amount.label("amount"),
-        )
-        .select_from(InvoiceItem)
-        .join(Transaction, Transaction.id == InvoiceItem.transaction_id)
-        .where(
-            Transaction.user_id == user_id,
-            _CONFIRMED,
-            Transaction.installments.is_not(None),
-            InvoiceItem.kind == InvoiceItemKind.PURCHASE,
-            InvoiceItem.status == ItemStatus.ACTIVE,
-            InvoiceItem.consumption_month == start,
-        )
-    )
-    parts = union_all(by_date, installments).subquery()
+    parts = spending_rows(user_id, start, end)
     total = func.sum(parts.c.amount)
     rows = session.execute(
         select(Category.id, Category.name, total)
@@ -208,6 +326,9 @@ class TransactionFilters:
     category_id: UUID | None = None
     merchant_id: UUID | None = None
     payment_method: PaymentMethod | None = None
+    # Lugar sem estabelecimento: descrição em minúsculas, sem espaços nas pontas.
+    description_key: str | None = None
+    types: tuple[TransactionType, ...] | None = None
     type: TransactionType | None = None
     status: TransactionStatus | None = TransactionStatus.CONFIRMED  # None = todos
 
@@ -263,6 +384,21 @@ def list_transactions(
         stmt = stmt.where(Transaction.payment_method == filters.payment_method)
     if filters.type is not None:
         stmt = stmt.where(Transaction.type == filters.type)
+    if filters.types is not None:
+        stmt = stmt.where(Transaction.type.in_(filters.types))
+    if filters.description_key is not None:
+        # Lugar sem estabelecimento: os lançamentos com essa descrição e os estornos deles.
+        original = aliased(Transaction)
+        described = and_(
+            Transaction.merchant_id.is_(None),
+            func.lower(func.trim(Transaction.description)) == filters.description_key,
+        )
+        refunded = select(original.id).where(
+            original.user_id == user_id,
+            original.merchant_id.is_(None),
+            func.lower(func.trim(original.description)) == filters.description_key,
+        )
+        stmt = stmt.where(or_(described, Transaction.refund_of_id.in_(refunded)))
     if filters.status is not None:
         stmt = stmt.where(Transaction.status == filters.status)
     if cursor is not None:

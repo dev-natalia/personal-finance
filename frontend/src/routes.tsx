@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes } from 'react-router'
 
 import { AccountsPage } from './features/accounts/AccountsPage'
+import { AnalysisPage } from './features/analysis/AnalysisPage'
+import { PlacePage } from './features/analysis/PlacePage'
 import { LoginPage } from './features/auth/LoginPage'
 import { RequireAuth } from './features/auth/RequireAuth'
 import { CardPage } from './features/cards/CardPage'
@@ -27,6 +29,8 @@ export function AppRoutes() {
         <Route index element={<HomePage />} />
         <Route path="lancamentos" element={<TransactionsPage />} />
         <Route path="lancamentos/novo" element={<FullFormPage />} />
+        <Route path="analise" element={<AnalysisPage />} />
+        <Route path="analise/lugar/:key" element={<PlacePage />} />
         <Route path="contas" element={<AccountsPage />} />
         <Route path="cartoes/:id" element={<CardPage />} />
         <Route path="mais" element={<MorePage />} />

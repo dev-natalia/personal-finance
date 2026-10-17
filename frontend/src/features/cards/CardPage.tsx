@@ -110,6 +110,12 @@ export function CardPage() {
         </Collapsible>
       </div>
 
+      <Link
+        to={`/analise?source=${encodeURIComponent(`card:${card.id}`)}`}
+        className={`${linkClass} mt-6 inline-flex min-h-11 items-center`}
+      >
+        Ver análise deste cartão
+      </Link>
       <CardFooter card={card} onMessage={announce} />
     </Page>
   )

@@ -592,6 +592,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analysis/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Summary
+         * @description Total, categorias, lugares e dias do período (o atual, sem `date`).
+         */
+        get: operations["summary_api_v1_analysis_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analysis/day": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Day
+         * @description O que foi gasto num dia.
+         */
+        get: operations["day_api_v1_analysis_day_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analysis/place": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Place
+         * @description Semana, mês e ano atuais de um lugar, e a média por compra.
+         */
+        get: operations["place_api_v1_analysis_place_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analysis/place/transactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Place Transactions
+         * @description Compras, encargos e estornos do lugar, do mais recente ao mais antigo.
+         */
+        get: operations["place_transactions_api_v1_analysis_place_transactions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -673,6 +753,24 @@ export interface components {
          * @enum {string}
          */
         AccountType: "CHECKING" | "SAVINGS" | "CASH";
+        /** AnalysisSummaryOut */
+        AnalysisSummaryOut: {
+            period: components["schemas"]["PeriodOut"];
+            /**
+             * Total
+             * @example 42.50
+             */
+            total: string;
+            /** By Category */
+            by_category: components["schemas"]["CategoryTotalOut"][];
+            /** By Place */
+            by_place: components["schemas"]["PlaceTotalOut"][];
+            /** By Day */
+            by_day: components["schemas"]["DayTotalOut"][];
+            busiest: components["schemas"]["DayTotalOut"] | null;
+            /** Sources */
+            sources: string[];
+        };
         /** BalancesOut */
         BalancesOut: {
             /**
@@ -832,6 +930,21 @@ export interface components {
             /** Is Essential */
             is_essential?: boolean | null;
         };
+        /**
+         * CategoryTotalOut
+         * @description `category_id` nulo: "Outras" (não filtra).
+         */
+        CategoryTotalOut: {
+            /** Category Id */
+            category_id: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Amount
+             * @example 42.50
+             */
+            amount: string;
+        };
         /** ChargeIn */
         ChargeIn: {
             /**
@@ -885,6 +998,31 @@ export interface components {
              * Format: date
              */
             next_reference_month: string;
+        };
+        /** DaySpendingOut */
+        DaySpendingOut: {
+            transaction: components["schemas"]["TransactionOut"];
+            /**
+             * Amount
+             * @example 42.50
+             */
+            amount: string;
+        };
+        /**
+         * DayTotalOut
+         * @description No período do ano, um por mês (`day` = dia 1).
+         */
+        DayTotalOut: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /**
+             * Amount
+             * @example 42.50
+             */
+            amount: string;
         };
         /** EntryAccountOut */
         EntryAccountOut: {
@@ -1323,6 +1461,67 @@ export interface components {
              */
             amount: string;
         };
+        /**
+         * PeriodKind
+         * @enum {string}
+         */
+        PeriodKind: "month" | "week" | "year";
+        /** PeriodOut */
+        PeriodOut: {
+            kind: components["schemas"]["PeriodKind"];
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /** Has Next */
+            has_next: boolean;
+        };
+        /** PlaceDetailOut */
+        PlaceDetailOut: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Category Name */
+            category_name: string | null;
+            week: components["schemas"]["PlaceTotalsOut"];
+            month: components["schemas"]["PlaceTotalsOut"];
+            year: components["schemas"]["PlaceTotalsOut"];
+            /** Average */
+            average: string | null;
+        };
+        /** PlaceTotalOut */
+        PlaceTotalOut: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /**
+             * Amount
+             * @example 42.50
+             */
+            amount: string;
+            /** Purchases */
+            purchases: number;
+            /** Category Name */
+            category_name: string | null;
+        };
+        /** PlaceTotalsOut */
+        PlaceTotalsOut: {
+            /**
+             * Amount
+             * @example 42.50
+             */
+            amount: string;
+            /** Purchases */
+            purchases: number;
+        };
         /** PreviewIn */
         PreviewIn: {
             /**
@@ -1371,6 +1570,12 @@ export interface components {
             /** Description */
             description?: string | null;
         };
+        /**
+         * SpendingMode
+         * @description Como uma compra parcelada conta no tempo.
+         * @enum {string}
+         */
+        SpendingMode: "installments" | "purchase";
         /** TransactionOut */
         TransactionOut: {
             /**
@@ -2772,6 +2977,141 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MonthSummaryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    summary_api_v1_analysis_summary_get: {
+        parameters: {
+            query?: {
+                period?: components["schemas"]["PeriodKind"];
+                date?: string | null;
+                mode?: components["schemas"]["SpendingMode"];
+                source?: string | null;
+                category_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalysisSummaryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    day_api_v1_analysis_day_get: {
+        parameters: {
+            query: {
+                date: string;
+                mode?: components["schemas"]["SpendingMode"];
+                source?: string | null;
+                category_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DaySpendingOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    place_api_v1_analysis_place_get: {
+        parameters: {
+            query: {
+                key: string;
+                mode?: components["schemas"]["SpendingMode"];
+                source?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    place_transactions_api_v1_analysis_place_transactions_get: {
+        parameters: {
+            query: {
+                key: string;
+                source?: string | null;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionPage"];
                 };
             };
             /** @description Validation Error */

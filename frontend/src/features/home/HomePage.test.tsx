@@ -1,5 +1,5 @@
 import { focusManager } from '@tanstack/react-query'
-import { act, screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { HttpResponse, http } from 'msw'
 import { afterEach, expect, test, vi } from 'vitest'
@@ -353,4 +353,11 @@ test('ledger detail describes card purchases and invoice payments', async () => 
   expect(screen.getByText('−2.300,00')).toBeInTheDocument()
   expect(screen.getByText('Encargos financeiros, Nubank')).toBeInTheDocument()
   expect(screen.getByText('−15,00')).toBeInTheDocument()
+})
+
+test('navigation has the analysis tab', async () => {
+  mockHome()
+  renderWithProviders(<AppRoutes />, { route: '/' })
+  const nav = await screen.findByRole('navigation', { name: 'Principal' })
+  expect(within(nav).getByRole('link', { name: 'Análise' })).toHaveAttribute('href', '/analise')
 })
