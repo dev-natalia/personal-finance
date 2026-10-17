@@ -14,14 +14,18 @@ from app.api.schemas.cards import (
     CardPatch,
     CardSummaryOut,
     ChargeIn,
+    CycleOut,
+    Day,
     InvoiceImpactOut,
     InvoiceSummaryOut,
     LimitOut,
+    OpeningTotalIn,
     PreviewIn,
     PreviewOut,
 )
 from app.api.schemas.common import ApiDate, NoticeOut
 from app.api.schemas.transactions import TransactionOut, TransactionWriteOut
+from app.domain.cards import add_months, invoice_dates, invoice_month_for
 from app.models import Card
 from app.repositories import get_owned
 from app.services import card_ledger, cards, invoice_payments, transactions
@@ -67,6 +71,24 @@ def list_cards(ctx: CtxDep, db: DbDep, include_archived: bool = False) -> list[C
     return cards.list_cards(db, ctx, include_archived=include_archived)
 
 
+@router.get("/cycle", response_model=CycleOut)
+def card_cycle(
+    ctx: CtxDep,
+    closing_day: Annotated[Day, Query()],
+    due_day: Annotated[Day, Query()],
+    opening_date: Annotated[ApiDate | None, Query()] = None,
+) -> CycleOut:
+    """Qual fatura está aberta no início de um cartão com esses dias (antes de cadastrá-lo)."""
+    month = invoice_month_for(opening_date or ctx.today(), closing_day, due_day)
+    closing, due = invoice_dates(month, closing_day, due_day)
+    return CycleOut(
+        open_reference_month=month,
+        open_closing_date=closing,
+        open_due_date=due,
+        next_reference_month=add_months(month, 1),
+    )
+
+
 @router.get("/summary", response_model=list[CardSummaryOut])
 def cards_summary(ctx: CtxDep, db: DbDep) -> list[CardSummaryOut]:
     """Fatura aberta, fatura a pagar, próximas faturas e limite de cada cartão ativo."""
@@ -106,6 +128,17 @@ def update_card(card_id: UUID, body: CardPatch, ctx: CtxDep, db: DbDep) -> Card:
     card = cards.update_card(db, ctx, card_id, body.model_dump(exclude_unset=True))
     db.commit()
     return card
+
+
+@router.put("/{card_id}/opening-total", response_model=CardSummaryOut)
+def set_opening_total(
+    card_id: UUID, body: OpeningTotalIn, ctx: CtxDep, db: DbDep
+) -> CardSummaryOut:
+    """Informa depois (ou corrige) o total da fatura aberta no início do cartão."""
+    cards.set_opening_total(db, ctx, card_id, body.amount)
+    db.commit()
+    card = cards.get_active_card(db, ctx, card_id)
+    return _summary_out(card_ledger.card_summary(db, card, ctx.today()))
 
 
 @router.post("/{card_id}/archive", response_model=CardArchiveOut)

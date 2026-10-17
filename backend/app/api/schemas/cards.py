@@ -58,6 +58,21 @@ class CardOut(BaseModel):
     archived_at: datetime | None
 
 
+class OpeningTotalIn(BaseModel):
+    """Total da fatura aberta no início do cartão; zero apaga."""
+
+    amount: Annotated[Money, Field(ge=0)]
+
+
+class CycleOut(BaseModel):
+    """Fatura aberta de um cartão ainda não cadastrado, para os rótulos do início."""
+
+    open_reference_month: date
+    open_closing_date: date
+    open_due_date: date
+    next_reference_month: date
+
+
 class CardArchiveOut(BaseModel):
     card: CardOut
     warnings: list[NoticeOut]

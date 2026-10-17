@@ -135,6 +135,43 @@ def create_card(
     return card
 
 
+def set_opening_total(
+    session: Session, ctx: RequestContext, card_id: UUID, amount: Decimal
+) -> None:
+    """Informa depois (ou corrige) o total da fatura aberta no início do cartão.
+
+    Só enquanto essa fatura não fechou: depois disso, a conferência com o total do banco é o
+    caminho. O valor substitui o anterior (nunca soma).
+    """
+    card = get_active_card(session, ctx, card_id)
+    invoice = invoices.get_or_create_invoice(session, card, opening_invoice_month(session, card))
+    if invoice.closing_date <= ctx.today():
+        raise RuleViolation(
+            "opening_invoice_closed",
+            "A fatura do início já fechou. Confira pelo total do banco na tela do cartão.",
+        )
+    amount = quantize(amount)
+    current = session.scalars(
+        select(InvoiceItem)
+        .where(
+            InvoiceItem.invoice_id == invoice.id,
+            InvoiceItem.kind == InvoiceItemKind.OPENING_BALANCE,
+            InvoiceItem.status == ItemStatus.ACTIVE,
+        )
+        .with_for_update()
+    ).first()
+    if current is None:
+        if amount > 0:
+            _opening_item(session, ctx, invoice, amount)
+        return
+    before = snapshot(current)
+    if amount > 0:
+        current.amount = amount
+    else:
+        current.status = ItemStatus.CANCELLED
+    record(session, ctx, current, AuditAction.UPDATE, before)
+
+
 def _recalculate_cycle(session: Session, ctx: RequestContext, card: Card) -> None:
     """Novos dias de fechamento/vencimento valem para as faturas ainda não fechadas.
 

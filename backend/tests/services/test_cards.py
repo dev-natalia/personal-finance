@@ -15,7 +15,7 @@ from app.models import (
     InvoiceItemKind,
     ItemDirection,
 )
-from app.services import cards, invoices
+from app.services import card_ledger, cards, invoices
 from app.services.cards import OpeningState
 from app.services.context import RequestContext
 from tests.support import make_account
@@ -197,3 +197,28 @@ def test_archived_card_name_can_be_reused(db: Session, ctx: RequestContext) -> N
     assert new.id != old.id
     with pytest.raises(Conflict):
         _create(db, ctx)
+
+
+def _open_total(db: Session, card: Card) -> Decimal:
+    summary = card_ledger.card_summary(db, card, TODAY)
+    return summary.open_invoice.total if summary.open_invoice else Decimal("0.00")
+
+
+def test_opening_total_can_be_informed_later_and_corrected(
+    db: Session, ctx: RequestContext
+) -> None:
+    """Pulou o início no cadastro: informa depois; errou o valor: corrige sem somar duas vezes."""
+    card = _create(db, ctx)
+    cards.set_opening_total(db, ctx, card.id, Decimal("1240.00"))
+    assert _open_total(db, card) == Decimal("1240.00")
+    cards.set_opening_total(db, ctx, card.id, Decimal("1300.00"))
+    assert _open_total(db, card) == Decimal("1300.00")
+    cards.set_opening_total(db, ctx, card.id, Decimal("0.00"))
+    assert _open_total(db, card) == Decimal("0.00")
+
+
+def test_opening_total_is_fixed_once_its_invoice_closed(db: Session, ctx: RequestContext) -> None:
+    card = _create(db, ctx, opening_date=date(2026, 9, 1))
+    with pytest.raises(RuleViolation) as error:
+        cards.set_opening_total(db, ctx, card.id, Decimal("100.00"))
+    assert error.value.code == "opening_invoice_closed"

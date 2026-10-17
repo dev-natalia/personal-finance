@@ -253,3 +253,33 @@ def test_preview_refuses_a_date_before_the_card_opening(auth_client: TestClient)
     )
     assert response.status_code == 422, response.text
     assert response.json()["code"] == "purchase_before_card_opening"
+
+
+def test_cycle_names_the_open_invoice_for_a_new_card(auth_client: TestClient) -> None:
+    """Cadastro em 05/10, fecha 3, vence 10: outubro já fechou; a fatura aberta é a de novembro."""
+    response = auth_client.get(
+        "/api/v1/cards/cycle",
+        params={"closing_day": 3, "due_day": 10, "opening_date": "2026-10-05"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "open_reference_month": "2026-11-01",
+        "open_closing_date": "2026-11-03",
+        "open_due_date": "2026-11-10",
+        "next_reference_month": "2026-12-01",
+    }
+    bad = auth_client.get("/api/v1/cards/cycle", params={"closing_day": 40, "due_day": 10})
+    assert bad.status_code == 422
+
+
+def test_opening_total_can_be_set_later(auth_client: TestClient) -> None:
+    card = _card(auth_client)
+    response = auth_client.put(
+        f"/api/v1/cards/{card['id']}/opening-total", json={"amount": "1240.00"}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["open_invoice"]["total"] == "1240.00"
+    negative = auth_client.put(
+        f"/api/v1/cards/{card['id']}/opening-total", json={"amount": "-1.00"}
+    )
+    assert negative.status_code == 422
