@@ -435,3 +435,12 @@ test('advance payment shows what is left on the open invoice', async () => {
   renderPage()
   expect(await screen.findByText('Falta pagar R$ 740,00')).toBeInTheDocument()
 })
+
+test('card page links to its analysis', async () => {
+  mockApi()
+  renderPage()
+  expect(await screen.findByRole('link', { name: 'Ver análise deste cartão' })).toHaveAttribute(
+    'href',
+    '/analise?source=card%3Acard-nubank',
+  )
+})
