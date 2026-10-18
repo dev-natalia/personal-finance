@@ -46,7 +46,13 @@ export function OpeningSection({
             o total dela pelo valor do banco.
           </p>
         ))}
-      <InProgressForm cardId={card.id} cycle={cycle ?? null} onMessage={onMessage} />
+      <InProgressForm
+        cardId={card.id}
+        closingDay={card.closing_day}
+        dueDay={card.due_day}
+        cycle={cycle ?? null}
+        onMessage={onMessage}
+      />
     </div>
   )
 }
@@ -109,10 +115,14 @@ function OpeningTotalForm({
 
 function InProgressForm({
   cardId,
+  closingDay,
+  dueDay,
   cycle,
   onMessage,
 }: {
   cardId: string
+  closingDay: number
+  dueDay: number
   cycle: CycleOut | null
   onMessage: Announce
 }) {
@@ -157,6 +167,8 @@ function InProgressForm({
       <InstallmentFields
         line={line}
         cycle={cycle}
+        closingDay={closingDay}
+        dueDay={dueDay}
         onEdit={(patch) => setLine((current) => ({ ...current, ...patch }))}
       />
       {error && (

@@ -4,6 +4,7 @@ import { HttpResponse, http } from 'msw'
 import { expect, test, vi } from 'vitest'
 
 import { expectNoA11yViolations } from '../../test/axe'
+import { cycleHandler } from '../../test/cycle'
 import { CARDS_SUMMARY, HINTS, TODAY, transaction } from '../../test/fixtures'
 import { renderWithProviders } from '../../test/render'
 import { server } from '../../test/server'
@@ -193,4 +194,28 @@ test('opening labels name the invoice months', async () => {
   const line = screen.getByRole('group', { name: 'Parcelada 1' })
   expect(within(line).getByLabelText('Quantas faltam depois da fatura de novembro')).toBeInTheDocument()
   expect(within(line).getByText('Entram a partir da fatura de dezembro.')).toBeInTheDocument()
+})
+
+test('in-progress line suggests how many installments are left', async () => {
+  mockApi()
+  server.use(cycleHandler())
+  const { user } = renderForm()
+  await fillCard(user)
+  await user.click(screen.getByRole('button', { name: 'Adicionar parcelada em andamento' }))
+  const line = screen.getByRole('group', { name: 'Parcelada 1' })
+  await user.selectOptions(within(line).getByLabelText('Parcelas'), '10')
+  fireEvent.change(within(line).getByLabelText('Data da compra'), {
+    target: { value: '2026-07-20' },
+  })
+  // Início em 15/10 (fecha dia 3): fatura de novembro. Compra de 20/07: fatura de agosto.
+  expect(
+    await within(line).findByText(
+      'Pelas datas, a fatura de novembro tem a parcela 4/10: faltam 6. Se o banco mostrar outro número, ajuste.',
+    ),
+  ).toBeInTheDocument()
+  const remaining = within(line).getByLabelText('Quantas faltam depois da fatura de novembro')
+  expect(remaining).toHaveValue('6')
+  // A usuária pode corrigir pelo número do banco; a sugestão não volta por cima.
+  await user.selectOptions(remaining, '5')
+  expect(remaining).toHaveValue('5')
 })
