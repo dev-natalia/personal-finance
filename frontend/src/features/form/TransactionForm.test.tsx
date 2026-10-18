@@ -6,6 +6,7 @@ import { expect, test, vi } from 'vitest'
 
 import type { TransactionOut } from '../../api/types'
 import { expectNoA11yViolations } from '../../test/axe'
+import { cycleHandler } from '../../test/cycle'
 import {
   ACCOUNTS,
   CARDS,
@@ -47,14 +48,7 @@ function mockApi(reply: Reply = () => ok()) {
     http.post('/api/v1/cards/:id/preview', () => HttpResponse.json(PREVIEW)),
     // Nubank começou a ser acompanhado em 01/09/2026; a fatura aberta nesse dia é a de setembro.
     http.get('/api/v1/cards', () => HttpResponse.json([CARDS_SUMMARY[0]!.card])),
-    http.get('/api/v1/cards/cycle', () =>
-      HttpResponse.json({
-        open_reference_month: '2026-09-01',
-        open_closing_date: '2026-09-03',
-        open_due_date: '2026-09-10',
-        next_reference_month: '2026-10-01',
-      }),
-    ),
+    cycleHandler(),
     http.patch('/api/v1/transactions/:id', async ({ request }) => {
       patched.push((await request.json()) as Record<string, unknown>)
       return HttpResponse.json({ transaction: transaction(), replayed: false, warnings: [] })
@@ -378,7 +372,10 @@ test('old installment purchase needs how many installments are left', async () =
   const { user } = renderForm()
   await oldCardPurchase(user)
   await user.selectOptions(screen.getByLabelText('Parcelas'), '10x')
-  await screen.findByLabelText('Quantas faltam depois da fatura de setembro')
+  const remaining = await screen.findByLabelText('Quantas faltam depois da fatura de setembro')
+  // O app sugere 8; a usuária apaga a sugestão.
+  await waitFor(() => expect(remaining).toHaveValue('8'))
+  await user.selectOptions(remaining, 'Escolha')
   await user.click(screen.getByRole('button', { name: 'Salvar lançamento' }))
   expect(await screen.findByText('Escolha quantas parcelas faltam.')).toBeInTheDocument()
   expect(api.created).toEqual([])
@@ -403,4 +400,40 @@ test('old installment purchase fields have no accessibility violations', async (
   await user.selectOptions(screen.getByLabelText('Parcelas'), '10x')
   await screen.findByLabelText('Quantas faltam depois da fatura de setembro')
   await expectNoA11yViolations(container)
+})
+
+test('remaining installments are filled in from the purchase date', async () => {
+  const api = mockApi()
+  const { user, onDone } = renderForm()
+  await oldCardPurchase(user)
+  await user.selectOptions(screen.getByLabelText('Parcelas'), '10x')
+  // Compra de 10/07 cai na fatura de agosto (fecha dia 3); o início é a de setembro: 2ª de 10.
+  expect(
+    await screen.findByText(
+      'Pelas datas, a fatura de setembro tem a parcela 2/10: faltam 8. Se o banco mostrar outro número, ajuste.',
+    ),
+  ).toBeInTheDocument()
+  expect(screen.getByLabelText('Quantas faltam depois da fatura de setembro')).toHaveValue('8')
+  await user.click(screen.getByRole('button', { name: 'Salvar lançamento' }))
+  await waitFor(() => expect(onDone).toHaveBeenCalled())
+  expect(api.created[0]!.body).toMatchObject({ installments: 10, remaining_installments: 8 })
+})
+
+test('finished old purchase says there is nothing to add', async () => {
+  const api = mockApi()
+  const { user } = renderForm()
+  await oldCardPurchase(user)
+  await user.clear(screen.getByLabelText('Data'))
+  await user.type(screen.getByLabelText('Data'), '2025-10-10')
+  await user.selectOptions(screen.getByLabelText('Parcelas'), '10x')
+  // 10/10/2025 → fatura de novembro/2025; a 10ª e última parcela foi a de agosto/2026.
+  expect(
+    await screen.findByText(
+      'Pelas datas, a última parcela cai na fatura de setembro ou antes: ela já está no total do início (ou já foi paga), não precisa lançar.',
+    ),
+  ).toBeInTheDocument()
+  expect(screen.getByLabelText('Quantas faltam depois da fatura de setembro')).toHaveValue('')
+  await user.click(screen.getByRole('button', { name: 'Salvar lançamento' }))
+  expect(await screen.findByText('Escolha quantas parcelas faltam.')).toBeInTheDocument()
+  expect(api.created).toEqual([])
 })

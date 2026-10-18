@@ -9,6 +9,7 @@ import { isPositive, tryParseMoney } from '../../domain/money'
 import { Field, invalid } from '../../ui/Field'
 import { useFocusOnMount } from '../../ui/focus'
 import { MoneyInput } from '../../ui/MoneyInput'
+import { RemainingField } from './RemainingField'
 import {
   errorTextClass,
   fieldLabelClass,
@@ -311,6 +312,8 @@ export function NewCardForm({ onCreated, onCancel }: Props) {
             number={index + 1}
             error={line.error ?? errors[`line-${line.id}`] ?? null}
             cycle={cycle ?? null}
+            closingDay={closingDay ? Number(closingDay) : null}
+            dueDay={dueDay ? Number(dueDay) : null}
             onEdit={(patch) => editLine(line.id, patch)}
             onRemove={() => setLines((all) => all.filter((l) => l.id !== line.id))}
           />
@@ -386,6 +389,8 @@ function InstallmentLine({
   number,
   error,
   cycle,
+  closingDay,
+  dueDay,
   onEdit,
   onRemove,
 }: {
@@ -393,6 +398,8 @@ function InstallmentLine({
   number: number
   error: string | null
   cycle: CycleOut | null
+  closingDay: number | null
+  dueDay: number | null
   onEdit: (patch: Partial<Line>) => void
   onRemove: () => void
 }) {
@@ -403,7 +410,13 @@ function InstallmentLine({
         <p className="text-sm">Registrada.</p>
       ) : (
         <>
-          <InstallmentFields line={line} cycle={cycle} onEdit={onEdit} />
+          <InstallmentFields
+            line={line}
+            cycle={cycle}
+            closingDay={closingDay}
+            dueDay={dueDay}
+            onEdit={onEdit}
+          />
           <button
             type="button"
             onClick={onRemove}
@@ -427,11 +440,16 @@ function InstallmentLine({
 export function InstallmentFields({
   line,
   cycle,
+  closingDay,
+  dueDay,
   onEdit,
 }: {
   line: Line
   /** Fatura aberta no início do cartão; nula enquanto não se sabe (rótulo genérico). */
   cycle: CycleOut | null
+  /** Dias do cartão, para calcular quantas parcelas faltam; nulos enquanto não escolhidos. */
+  closingDay: number | null
+  dueDay: number | null
   onEdit: (patch: Partial<Line>) => void
 }) {
   const id = useId()
@@ -478,22 +496,21 @@ export function InstallmentFields({
             className={inputClass}
           />
         </label>
-        <label className={fieldLabelClass}>
-          {openMonth ? `Quantas faltam depois da fatura de ${openMonth}` : 'Quantas faltam depois da fatura atual'}
-          <select
-            value={line.remaining}
-            onChange={(e) => onEdit({ remaining: e.target.value })}
-            disabled={!count}
-            className={inputClass}
-          >
-            <option value="">Escolha</option>
-            {Array.from({ length: Math.max(count - 1, 0) }, (_, k) => k + 1).map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-        </label>
+        <RemainingField
+          id={`${id}-remaining`}
+          label={
+            openMonth
+              ? `Quantas faltam depois da fatura de ${openMonth}`
+              : 'Quantas faltam depois da fatura atual'
+          }
+          count={count || null}
+          purchaseDate={line.purchasedOn}
+          closingDay={closingDay}
+          dueDay={dueDay}
+          startMonth={cycle?.open_reference_month ?? null}
+          value={line.remaining}
+          onChange={(value) => onEdit({ remaining: value })}
+        />
       </div>
       {cycle && (
         <p className="text-sm text-ink-soft">

@@ -27,6 +27,7 @@ import {
 import { monthName } from '../../domain/dates'
 import { isPositive, toInputAmount, tryParseMoney } from '../../domain/money'
 import type { PaymentMethod } from '../../domain/parser'
+import { RemainingField } from '../cards/RemainingField'
 import { CardImpact } from '../entry/CardImpact'
 import { Field, invalid } from '../../ui/Field'
 import { MoneyInput } from '../../ui/MoneyInput'
@@ -419,8 +420,9 @@ export function TransactionForm({ initial, defaults = {}, onDone, onCancel }: Pr
         <InProgressFields
           id={`${id}-remaining`}
           count={installmentCount}
-          openingDate={cardInfo.opening_date}
-          openMonth={startCycle ? monthName(startCycle.open_reference_month) : null}
+          purchaseDate={date}
+          card={cardInfo}
+          startMonth={startCycle?.open_reference_month ?? null}
           nextMonth={startCycle ? monthName(startCycle.next_reference_month) : null}
           value={f.remaining}
           error={errors.remaining_installments}
@@ -509,8 +511,9 @@ function fullDate(iso: string): string {
 function InProgressFields({
   id,
   count,
-  openingDate,
-  openMonth,
+  purchaseDate,
+  card,
+  startMonth,
   nextMonth,
   value,
   error,
@@ -518,14 +521,16 @@ function InProgressFields({
 }: {
   id: string
   count: number | null
-  openingDate: string
-  /** Fatura aberta no início do cartão; nula enquanto não se sabe (rótulo genérico). */
-  openMonth: string | null
+  purchaseDate: string
+  card: { opening_date: string; closing_day: number; due_day: number }
+  /** Fatura aberta no início do cartão ("AAAA-MM-01"); nula enquanto não se sabe. */
+  startMonth: string | null
   nextMonth: string | null
   value: string
   error: string | undefined
   onChange: (value: string) => void
 }) {
+  const openMonth = startMonth ? monthName(startMonth) : null
   if (count === null) {
     return (
       <p className="text-sm text-ink-soft">
@@ -537,30 +542,22 @@ function InProgressFields({
   return (
     <>
       <p className="text-sm text-ink-soft">
-        Compra de antes de o cartão entrar no app (início em {fullDate(openingDate)}): só as
+        Compra de antes de o cartão entrar no app (início em {fullDate(card.opening_date)}): só as
         parcelas que ainda faltam entram nas próximas faturas
         {nextMonth ? `, a partir da de ${nextMonth}` : ''}.
       </p>
-      <Field
+      <RemainingField
         id={id}
         label={`Quantas faltam depois da fatura ${openMonth ? `de ${openMonth}` : 'do início'}`}
+        count={count}
+        purchaseDate={purchaseDate}
+        closingDay={card.closing_day}
+        dueDay={card.due_day}
+        startMonth={startMonth}
+        value={value}
         error={error}
-      >
-        <select
-          id={id}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          {...invalid(id, error)}
-          className={inputClass}
-        >
-          <option value="">Escolha</option>
-          {Array.from({ length: count - 1 }, (_, k) => k + 1).map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-      </Field>
+        onChange={onChange}
+      />
     </>
   )
 }
