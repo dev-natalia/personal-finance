@@ -57,6 +57,7 @@ function mockApi(reply: Reply = () => created(), duplicates: Record<number, numb
         })),
       })
     }),
+    http.post('/api/v1/misread-phrases', () => HttpResponse.json({}, { status: 201 })),
     http.post('/api/v1/transactions', async ({ request }) => {
       const entry = {
         key: request.headers.get('Idempotency-Key'),
@@ -69,11 +70,29 @@ function mockApi(reply: Reply = () => created(), duplicates: Record<number, numb
   return sent
 }
 
-function renderCard(items: ParsedItem[]) {
+/** Frases não entendidas enviadas; `fail` faz o registro dar erro de rede. */
+function mockMisread(fail = false) {
+  const recorded: { text: string; reasons: string[] }[] = []
+  server.use(
+    http.post('/api/v1/misread-phrases', async ({ request }) => {
+      recorded.push((await request.json()) as { text: string; reasons: string[] })
+      return fail ? HttpResponse.error() : HttpResponse.json({}, { status: 201 })
+    }),
+  )
+  return recorded
+}
+
+function renderCard(items: ParsedItem[], text = items.map((item) => item.raw).join('; ')) {
   const onSaved = vi.fn()
   const onClose = vi.fn()
   const view = renderWithProviders(
-    <ConfirmationCard parsed={items} hints={HINTS} onSaved={onSaved} onClose={onClose} />,
+    <ConfirmationCard
+      parsed={items}
+      text={text}
+      hints={HINTS}
+      onSaved={onSaved}
+      onClose={onClose}
+    />,
   )
   return { ...view, onSaved, onClose, user: userEvent.setup() }
 }
@@ -368,4 +387,72 @@ test('confirmation card with card has no accessibility violations', async () => 
   const { container } = renderCard([onCard()])
   await screen.findByText('Limite não é dinheiro.')
   await expectNoA11yViolations(container)
+})
+
+const unknownSource = { accountId: null, paymentMethod: null, pending: ['account', 'paymentMethod'] } as const
+
+test('pending fields are recorded when the card opens', async () => {
+  mockApi()
+  const recorded = mockMisread()
+  const { onClose, user } = renderCard(
+    [parsed({ raw: '42 mercado', ...unknownSource, pending: [...unknownSource.pending] })],
+    '42 mercado',
+  )
+  await waitFor(() =>
+    expect(recorded).toEqual([
+      { text: '42 mercado', reasons: ['PENDING_ACCOUNT', 'PENDING_PAYMENT_METHOD'] },
+    ]),
+  )
+  // Fechar sem confirmar não desfaz o registro.
+  await user.click(screen.getByRole('button', { name: 'Cancelar' }))
+  expect(onClose).toHaveBeenCalled()
+  expect(recorded).toHaveLength(1)
+})
+
+test('edited and unchecked items are recorded on confirm', async () => {
+  const sent = mockApi()
+  const recorded = mockMisread()
+  const { user, onClose } = renderCard(
+    [parsed(), parsed({ raw: '8 café', description: 'café', amount: '8.00' })],
+    '42 mercado pix itaú; 8 café',
+  )
+  const value = (await screen.findAllByLabelText('Valor'))[0]!
+  await user.clear(value)
+  await user.type(value, '45,00')
+  // Categoria não conta como erro de entendimento.
+  await screen.findAllByRole('option', { name: 'Saúde' })
+  await user.selectOptions(screen.getAllByLabelText('Categoria')[0]!, 'Saúde')
+  await user.click(screen.getAllByRole('checkbox', { name: 'Incluir este lançamento' })[1]!)
+  expect(recorded).toEqual([])
+  await user.click(screen.getByRole('button', { name: 'Confirmar' }))
+  await waitFor(() => expect(onClose).toHaveBeenCalled())
+  expect(sent).toHaveLength(1)
+  expect(recorded).toEqual([
+    { text: '42 mercado pix itaú; 8 café', reasons: ['CHANGED_AMOUNT', 'UNCHECKED_ITEM'] },
+  ])
+})
+
+test('understood and unchanged phrase records nothing', async () => {
+  mockApi()
+  const recorded = mockMisread()
+  const { user, onClose } = renderCard([parsed()])
+  await screen.findAllByRole('option', { name: 'Saúde' })
+  await user.selectOptions(screen.getByLabelText('Categoria'), 'Saúde')
+  await user.click(screen.getByRole('button', { name: 'Confirmar' }))
+  await waitFor(() => expect(onClose).toHaveBeenCalledWith([]))
+  expect(recorded).toEqual([])
+})
+
+test('recording failure does not block saving', async () => {
+  const sent = mockApi()
+  const recorded = mockMisread(true)
+  const { user, onClose } = renderCard([
+    parsed({ ...unknownSource, pending: [...unknownSource.pending] }),
+  ])
+  await user.click(await screen.findByRole('button', { name: 'Pix Itaú' }))
+  await user.click(screen.getByRole('button', { name: 'Confirmar' }))
+  await waitFor(() => expect(onClose).toHaveBeenCalledWith([]))
+  expect(sent).toHaveLength(1)
+  expect(recorded.length).toBeGreaterThan(0)
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 })

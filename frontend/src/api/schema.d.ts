@@ -672,6 +672,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/misread-phrases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Phrases */
+        get: operations["list_phrases_api_v1_misread_phrases_get"];
+        put?: never;
+        /** Record Phrase */
+        post: operations["record_phrase_api_v1_misread_phrases_post"];
+        /** Delete All */
+        delete: operations["delete_all_api_v1_misread_phrases_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/misread-phrases/{phrase_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Phrase */
+        delete: operations["delete_phrase_api_v1_misread_phrases__phrase_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/backup-report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Backup
+         * @description Chamado pela máquina de backup, com o token dela; sem sessão nem cookie.
+         */
+        post: operations["report_backup_api_v1_internal_backup_report_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backup-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Backup Status */
+        get: operations["backup_status_api_v1_backup_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -770,6 +843,20 @@ export interface components {
             busiest: components["schemas"]["DayTotalOut"] | null;
             /** Sources */
             sources: string[];
+        };
+        /** BackupReportIn */
+        BackupReportIn: {
+            /** Object Key */
+            object_key: string;
+            /** Size Bytes */
+            size_bytes: number;
+        };
+        /** BackupStatusOut */
+        BackupStatusOut: {
+            /** Last Success At */
+            last_success_at: string | null;
+            /** Stale */
+            stale: boolean;
         };
         /** BalancesOut */
         BalancesOut: {
@@ -1385,6 +1472,40 @@ export interface components {
             /** Default Category Id */
             default_category_id: string | null;
         };
+        /** MisreadPhraseIn */
+        MisreadPhraseIn: {
+            /** Text */
+            text: string;
+            /** Reasons */
+            reasons: components["schemas"]["MisreadReason"][];
+        };
+        /** MisreadPhraseOut */
+        MisreadPhraseOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Text */
+            text: string;
+            /** Reasons */
+            reasons: components["schemas"]["MisreadReason"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * MisreadReason
+         * @enum {string}
+         */
+        MisreadReason: "NOTHING_PARSED" | "PENDING_AMOUNT" | "PENDING_DESCRIPTION" | "PENDING_ACCOUNT" | "PENDING_PAYMENT_METHOD" | "CHANGED_TYPE" | "CHANGED_AMOUNT" | "CHANGED_DESCRIPTION" | "CHANGED_DATE" | "CHANGED_SOURCE" | "CHANGED_PAYMENT_METHOD" | "CHANGED_INSTALLMENTS" | "UNCHECKED_ITEM";
         /** MonthSummaryOut */
         MonthSummaryOut: {
             /** Month */
@@ -3121,6 +3242,157 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_phrases_api_v1_misread_phrases_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MisreadPhraseOut"][];
+                };
+            };
+        };
+    };
+    record_phrase_api_v1_misread_phrases_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MisreadPhraseIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MisreadPhraseOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_all_api_v1_misread_phrases_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    delete_phrase_api_v1_misread_phrases__phrase_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                phrase_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_backup_api_v1_internal_backup_report_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BackupReportIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    backup_status_api_v1_backup_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupStatusOut"];
                 };
             };
         };

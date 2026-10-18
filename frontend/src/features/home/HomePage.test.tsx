@@ -28,8 +28,14 @@ const unauthenticated = () =>
   HttpResponse.json({ status: 401, code: 'unauthenticated', detail: 'x' }, { status: 401 })
 
 /** API da tela inicial; `signedIn` controla a sessão para simular a expiração. */
-function mockHome(items: TransactionOut[] = []) {
-  const session = { signedIn: true }
+function mockHome(
+  items: TransactionOut[] = [],
+  backup: { last_success_at: string | null; stale: boolean } = {
+    last_success_at: '2026-10-15T06:00:00Z',
+    stale: false,
+  },
+) {
+  const session = { signedIn: true, recorded: [] as { text: string; reasons: string[] }[] }
   server.use(
     http.get('/api/v1/auth/me', () => (session.signedIn ? HttpResponse.json(USER) : unauthenticated())),
     http.post('/api/v1/auth/login', () => {
@@ -49,6 +55,11 @@ function mockHome(items: TransactionOut[] = []) {
     http.get('/api/v1/cards/summary', () => HttpResponse.json(CARDS_SUMMARY)),
     http.get('/api/v1/merchants', () => HttpResponse.json([])),
     http.post('/api/v1/entry-checks', () => HttpResponse.json({ results: [] })),
+    http.get('/api/v1/backup-status', () => HttpResponse.json(backup)),
+    http.post('/api/v1/misread-phrases', async ({ request }) => {
+      session.recorded.push((await request.json()) as { text: string; reasons: string[] })
+      return HttpResponse.json({}, { status: 201 })
+    }),
   )
   return session
 }
@@ -360,4 +371,49 @@ test('navigation has the analysis tab', async () => {
   renderWithProviders(<AppRoutes />, { route: '/' })
   const nav = await screen.findByRole('navigation', { name: 'Principal' })
   expect(within(nav).getByRole('link', { name: 'Análise' })).toHaveAttribute('href', '/analise')
+})
+
+test('phrase with nothing understood shows a hint and is recorded', async () => {
+  const session = mockHome()
+  renderWithProviders(<AppRoutes />, { route: '/' })
+  const user = userEvent.setup()
+  const field = await screen.findByLabelText('Novo lançamento')
+  await user.type(field, 'dia 3:{Enter}')
+  expect(await screen.findByText(/Não entendi essa frase/)).toHaveTextContent(
+    "Não entendi essa frase. Tente como '42 mercado pix itaú'.",
+  )
+  expect(screen.getByText(/Não entendi essa frase/)).toHaveAttribute('role', 'status')
+  expect(field).toHaveValue('dia 3:')
+  expect(screen.queryByRole('heading', { name: /Confirmar/ })).not.toBeInTheDocument()
+  await waitFor(() =>
+    expect(session.recorded).toEqual([{ text: 'dia 3:', reasons: ['NOTHING_PARSED'] }]),
+  )
+  // Ao corrigir a frase, a dica some.
+  await user.clear(field)
+  await user.type(field, '42 mercado pix itaú{Enter}')
+  expect(await screen.findByRole('heading', { name: 'Confirmar lançamento' })).toBeInTheDocument()
+  expect(screen.queryByText(/Não entendi essa frase/)).not.toBeInTheDocument()
+})
+
+test('home warns when backup is stale', async () => {
+  mockHome([], { last_success_at: '2026-10-12T06:00:00Z', stale: true })
+  renderWithProviders(<AppRoutes />, { route: '/' })
+  const warning = await screen.findByText(/O backup não roda há mais de 2 dias\./)
+  expect(within(warning).getByRole('link', { name: 'Ver em Mais' })).toHaveAttribute('href', '/mais')
+  await expectNoA11yViolations(document.body)
+})
+
+test('home says when backup never ran', async () => {
+  mockHome([], { last_success_at: null, stale: true })
+  renderWithProviders(<AppRoutes />, { route: '/' })
+  expect(await screen.findByText(/O backup ainda não rodou\./)).toBeInTheDocument()
+  expect(screen.queryByText(/mais de 2 dias/)).not.toBeInTheDocument()
+})
+
+test('fresh backup shows no warning on home', async () => {
+  mockHome()
+  renderWithProviders(<AppRoutes />, { route: '/' })
+  await screen.findByText('R$ 1.008,00')
+  await screen.findByLabelText('Novo lançamento')
+  expect(screen.queryByText(/O backup não roda/)).not.toBeInTheDocument()
 })

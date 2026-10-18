@@ -28,6 +28,8 @@ export const queryKeys = {
   analysis: (kind: string, params: object) => ['analysis', kind, params] as const,
   cycle: (closingDay: number, dueDay: number, openingDate: string) =>
     ['cards', 'cycle', closingDay, dueDay, openingDate] as const,
+  misreadPhrases: ['misread-phrases'] as const,
+  backupStatus: ['backup-status'] as const,
 }
 
 export function useMe() {
@@ -200,5 +202,19 @@ export function useAnalysisPlaceTransactions(key: string, source: string | undef
     queryFn: ({ pageParam }) => api.analysisPlaceTransactions(key, { source, cursor: pageParam }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.next_cursor ?? undefined,
+  })
+}
+
+export function useMisreadPhrases() {
+  return useQuery({ queryKey: queryKeys.misreadPhrases, queryFn: api.misreadPhrases })
+}
+
+/** Último backup; consultado de novo a cada hora com o app aberto. */
+export function useBackupStatus() {
+  return useQuery({
+    queryKey: queryKeys.backupStatus,
+    queryFn: api.backupStatus,
+    staleTime: 5 * 60_000,
+    refetchInterval: 60 * 60_000,
   })
 }
