@@ -79,7 +79,7 @@ Teste ponta a ponta (Playwright, celular) contra a imagem, num banco próprio re
 bash scripts/e2e.sh
 ```
 
-Em produção, defina `DATABASE_URL`, `SECRET_KEY`, `APP_ORIGIN` (o endereço HTTPS público), deixe `COOKIE_SECURE` no padrão (`true`) e configure `FORWARDED_ALLOW_IPS` conforme a seção sobre proxy abaixo.
+Em produção, defina `DATABASE_URL`, `SECRET_KEY`, `APP_ORIGIN` (o endereço HTTPS público), deixe `COOKIE_SECURE` no padrão (`true`) e configure o IP do cliente conforme a seção sobre proxy abaixo (no Fly.io, ver "Publicação").
 
 ## Cartões e faturas
 
@@ -134,6 +134,115 @@ uv run uvicorn --factory app.main:create_app --host 0.0.0.0 --port 8000 \
 ```
 
 Use em `--forwarded-allow-ips` só o endereço do proxy da plataforma (nunca `*` com a porta exposta diretamente), senão qualquer cliente pode falsificar o próprio IP pelo cabeçalho `X-Forwarded-For`. Na imagem de produção, o mesmo valor vai na variável `FORWARDED_ALLOW_IPS`.
+
+Quando a plataforma informa o IP real num cabeçalho próprio, que o proxy dela sempre sobrescreve, prefira `CLIENT_IP_HEADER` (só para o limite de login) e deixe `FORWARDED_ALLOW_IPS` no padrão. É o que o `fly.toml` faz, com `CLIENT_IP_HEADER=Fly-Client-IP`: com `--forwarded-allow-ips="*"`, o uvicorn usaria o IP mais à esquerda do `X-Forwarded-For`, que o próprio cliente escolhe.
+
+## Publicação
+
+O app roda no **Fly.io** (São Paulo, uma máquina sempre ligada), com o banco no **Neon** (plano gratuito, São Paulo). Uma cópia diária do banco vai criptografada para o **Cloudflare R2**. Cada merge na `main` com o CI verde publica sozinho (job `deploy` do `ci.yml`), aplicando as migrações.
+
+São dois apps no Fly, cada um só com os segredos de que precisa:
+
+| App | O que roda | Segredos |
+|---|---|---|
+| `financas-pessoais` | o site e a API (`fly.toml`) | `DATABASE_URL`, `SECRET_KEY`, `BACKUP_REPORT_TOKEN` |
+| `financas-pessoais-backup` | uma máquina agendada, uma vez por dia (`scripts/backup.sh`) | `BACKUP_DATABASE_URL` (só leitura), chaves do R2, `BACKUP_AGE_RECIPIENT`, `APP_URL`, `BACKUP_REPORT_TOKEN` |
+
+Nenhum segredo vai na linha de comando: o `fly secrets import` lê `NOME=valor` da entrada (cole as linhas e termine com Ctrl+Z e Enter no Windows, Ctrl+D no Linux/macOS).
+
+### 1. Contas e ferramentas
+
+- **Fly.io** (pede cartão) e `flyctl`: no PowerShell, `iwr https://fly.io/install.ps1 -useb | iex`; depois `fly auth login`.
+- **Neon** (sem cartão).
+- **Cloudflare**, com o R2 ativado (pede cartão; os primeiros 10 GB são gratuitos).
+
+### 2. Banco (Neon)
+
+1. Crie o projeto na região **AWS São Paulo (`aws-sa-east-1`)**.
+2. Em "Connect", copie a conexão **direta** (sem "pooled": o app já tem o próprio pool). Troque `postgresql://` por `postgresql+psycopg://`; o resultado é o `DATABASE_URL` do app, com `sslmode=require`.
+3. Usuário de backup, só leitura, no SQL Editor (criado por SQL, ele não herda os poderes de administrador que os usuários do painel recebem):
+
+   ```sql
+   CREATE ROLE backup_reader WITH LOGIN PASSWORD '<senha longa e aleatória>';
+   GRANT pg_read_all_data TO backup_reader;
+   ```
+
+   O `BACKUP_DATABASE_URL` é a mesma conexão com `backup_reader` e essa senha, no formato `postgresql://` (é o `pg_dump` que usa).
+
+### 3. Armazenamento do backup (R2)
+
+1. Crie o bucket `financas-backup`.
+2. Em Settings → Object lifecycle rules: apagar objetos com prefixo `daily/` depois de 30 dias e com prefixo `monthly/` depois de 365 dias.
+3. Em "Manage API tokens", crie um token **Object Read & Write** só para esse bucket. Guarde o Access Key ID, o Secret Access Key e o endpoint `https://<id da conta>.r2.cloudflarestorage.com`.
+
+### 4. Chave do backup
+
+A imagem do app já traz o `age`; construa-a uma vez localmente (ela serve também para restaurar):
+
+```bash
+docker build -t financas-local .
+docker run --rm --entrypoint age-keygen financas-local
+```
+
+A saída tem a chave privada (`AGE-SECRET-KEY-1…`): guarde-a **só** no gerenciador de senhas. Sem ela nenhum backup pode ser aberto; ela nunca vai para o repositório, o GitHub ou o Fly. A linha `# public key: age1…` é o `BACKUP_AGE_RECIPIENT`.
+
+### 5. App
+
+```bash
+fly apps create financas-pessoais
+fly secrets import -a financas-pessoais --stage        # DATABASE_URL, SECRET_KEY, BACKUP_REPORT_TOKEN
+fly deploy --remote-only --ha=false                     # --ha=false: uma máquina só (o padrão cria duas)
+curl https://financas-pessoais.fly.dev/api/v1/health
+```
+
+`SECRET_KEY` e `BACKUP_REPORT_TOKEN`: 32 caracteres aleatórios ou mais cada (`python -c "import secrets; print(secrets.token_urlsafe(32))"`). Se o nome `financas-pessoais` estiver ocupado, troque-o junto em `fly.toml` (`app` e `APP_ORIGIN`) e no health check do `ci.yml`.
+
+**Publicação automática.** Token de deploy só deste app como segredo do GitHub:
+
+```bash
+fly tokens create deploy -a financas-pessoais | gh secret set FLY_API_TOKEN
+```
+
+### 6. Sua usuária
+
+```bash
+fly ssh console -a financas-pessoais
+python -m app.cli create-user --email voce@example.com   # dentro da máquina; a senha é pedida sem aparecer
+```
+
+### 7. Backup diário
+
+```bash
+fly apps create financas-pessoais-backup
+fly secrets import -a financas-pessoais-backup --stage
+#   BACKUP_DATABASE_URL, BACKUP_AGE_RECIPIENT, R2_ENDPOINT, R2_BUCKET,
+#   R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, APP_URL=https://financas-pessoais.fly.dev,
+#   BACKUP_REPORT_TOKEN (o mesmo do app)
+fly deploy --build-only --push --remote-only -a financas-pessoais-backup --image-label backup
+fly machine run registry.fly.io/financas-pessoais-backup:backup sh scripts/backup.sh \
+  -a financas-pessoais-backup --region gru --vm-memory 256 \
+  --schedule daily --restart on-fail
+```
+
+O Fly roda a máquina uma vez por dia, contando a partir da criação (sem horário fixo); `--restart on-fail` faz ela parar depois de cada execução (sem ele, reiniciaria sem fim) e tentar de novo se falhar. Para rodar agora: `fly machine start <id> -a financas-pessoais-backup`; o resultado aparece em `fly logs -a financas-pessoais-backup` e em "Mais" → "Último backup". O app avisa na tela inicial quando o último backup tem mais de 2 dias.
+
+A máquina usa a imagem do momento em que foi criada. Se `app/backup.py` mudar, repita o `fly deploy --build-only …` e troque a imagem: `fly machine update <id> -a financas-pessoais-backup --image registry.fly.io/financas-pessoais-backup:backup`.
+
+### 8. Restaurar um backup
+
+1. Baixe um arquivo `.sql.gz.age` no painel do R2.
+2. Num banco vazio (por exemplo, um novo no Postgres do `docker compose`):
+
+   ```bash
+   age -d -i chave.txt 2026-10-18.sql.gz.age | gunzip | psql postgresql://finance:finance@127.0.0.1:5433/restaurado
+   ```
+
+   `chave.txt` tem a chave privada; apague o arquivo em seguida. Sem `age` e `psql` instalados, rode o mesmo comando dentro da imagem local, com a pasta do arquivo montada e o banco em `host.docker.internal`:
+
+   ```bash
+   docker run --rm -v "<pasta>:/data" --entrypoint bash financas-local -c      "age -d -i /data/chave.txt /data/2026-10-18.sql.gz.age | gunzip | psql postgresql://finance:finance@host.docker.internal:5433/restaurado"
+   ```
+3. Confira o saldo: aponte o app local para o banco restaurado (`DATABASE_URL`) e compare com o do celular.
 
 ## Testes e verificação
 
