@@ -6,7 +6,16 @@ import { expect, test, vi } from 'vitest'
 
 import type { TransactionOut } from '../../api/types'
 import { expectNoA11yViolations } from '../../test/axe'
-import { ACCOUNTS, CARDS, CATEGORIES, HINTS, PREVIEW, TODAY, transaction } from '../../test/fixtures'
+import {
+  ACCOUNTS,
+  CARDS,
+  CARDS_SUMMARY,
+  CATEGORIES,
+  HINTS,
+  PREVIEW,
+  TODAY,
+  transaction,
+} from '../../test/fixtures'
 import { renderWithProviders } from '../../test/render'
 import { server } from '../../test/server'
 import { FullFormPage } from './FullFormPage'
@@ -36,6 +45,16 @@ function mockApi(reply: Reply = () => ok()) {
       return reply(created.length)
     }),
     http.post('/api/v1/cards/:id/preview', () => HttpResponse.json(PREVIEW)),
+    // Nubank começou a ser acompanhado em 01/09/2026; a fatura aberta nesse dia é a de setembro.
+    http.get('/api/v1/cards', () => HttpResponse.json([CARDS_SUMMARY[0]!.card])),
+    http.get('/api/v1/cards/cycle', () =>
+      HttpResponse.json({
+        open_reference_month: '2026-09-01',
+        open_closing_date: '2026-09-03',
+        open_due_date: '2026-09-10',
+        next_reference_month: '2026-10-01',
+      }),
+    ),
     http.patch('/api/v1/transactions/:id', async ({ request }) => {
       patched.push((await request.json()) as Record<string, unknown>)
       return HttpResponse.json({ transaction: transaction(), replayed: false, warnings: [] })
@@ -315,4 +334,73 @@ test('card preview shows why the purchase would be refused', async () => {
   await fillCommon(await screen.findByLabelText('Valor').then(() => user), '80', 'farmácia')
   await user.selectOptions(screen.getByLabelText('Conta ou cartão'), 'Crédito Nubank')
   expect(await screen.findByText('A compra é anterior ao início do cartão.')).toBeInTheDocument()
+})
+
+async function oldCardPurchase(user: ReturnType<typeof userEvent.setup>) {
+  await user.type(await screen.findByLabelText('Valor'), '3.000')
+  await user.type(screen.getByLabelText('Descrição'), 'geladeira')
+  await user.selectOptions(screen.getByLabelText('Conta ou cartão'), 'Crédito Nubank')
+  await user.clear(screen.getByLabelText('Data'))
+  await user.type(screen.getByLabelText('Data'), '2026-07-10')
+}
+
+test('card purchase from before the card start sends only the remaining installments', async () => {
+  const api = mockApi()
+  const { user, onDone } = renderForm()
+  await oldCardPurchase(user)
+  await user.selectOptions(screen.getByLabelText('Parcelas'), '10x')
+  expect(
+    await screen.findByText(/Compra de antes de o cartão entrar no app/),
+  ).toBeInTheDocument()
+  // O valor é o total da compra; a prévia de fatura e limite não vale para ela.
+  expect(screen.getByLabelText('Valor total')).toHaveValue('3.000')
+  expect(screen.queryByText('Limite não é dinheiro.')).not.toBeInTheDocument()
+  const remaining = await screen.findByLabelText('Quantas faltam depois da fatura de setembro')
+  expect(within(remaining).getAllByRole('option').map((o) => o.textContent)).toEqual([
+    'Escolha', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+  ])
+  await user.selectOptions(remaining, '5')
+  await user.click(screen.getByRole('button', { name: 'Salvar lançamento' }))
+  await waitFor(() => expect(onDone).toHaveBeenCalled())
+  expect(api.created[0]!.body).toEqual({
+    type: 'EXPENSE',
+    amount: '3000.00',
+    occurred_on: '2026-07-10',
+    description: 'geladeira',
+    card_id: CARDS.nubank.id,
+    installments: 10,
+    remaining_installments: 5,
+  })
+})
+
+test('old installment purchase needs how many installments are left', async () => {
+  const api = mockApi()
+  const { user } = renderForm()
+  await oldCardPurchase(user)
+  await user.selectOptions(screen.getByLabelText('Parcelas'), '10x')
+  await screen.findByLabelText('Quantas faltam depois da fatura de setembro')
+  await user.click(screen.getByRole('button', { name: 'Salvar lançamento' }))
+  expect(await screen.findByText('Escolha quantas parcelas faltam.')).toBeInTheDocument()
+  expect(api.created).toEqual([])
+})
+
+test('cash card purchase from before the card start is not sent', async () => {
+  const api = mockApi()
+  const { user } = renderForm()
+  await oldCardPurchase(user)
+  expect(
+    await screen.findByText(/Compra à vista de antes do início do cartão já está/),
+  ).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Salvar lançamento' }))
+  expect(await screen.findByText('Escolha as parcelas da compra.')).toBeInTheDocument()
+  expect(api.created).toEqual([])
+})
+
+test('old installment purchase fields have no accessibility violations', async () => {
+  mockApi()
+  const { user, container } = renderForm()
+  await oldCardPurchase(user)
+  await user.selectOptions(screen.getByLabelText('Parcelas'), '10x')
+  await screen.findByLabelText('Quantas faltam depois da fatura de setembro')
+  await expectNoA11yViolations(container)
 })

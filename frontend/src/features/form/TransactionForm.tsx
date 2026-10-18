@@ -2,7 +2,13 @@ import { type FormEvent, type ReactNode, useId, useState } from 'react'
 
 import { ApiError } from '../../api/client'
 import { api } from '../../api/endpoints'
-import { useCategories, useEntryHints, useInvalidateLedger } from '../../api/queries'
+import {
+  useCardCycle,
+  useCards,
+  useCategories,
+  useEntryHints,
+  useInvalidateLedger,
+} from '../../api/queries'
 import type {
   ExpenseIn,
   IncomeIn,
@@ -18,6 +24,7 @@ import {
   PAYMENT_METHOD_LABELS,
   TRANSACTION_TYPE_LABELS,
 } from '../../domain/labels'
+import { monthName } from '../../domain/dates'
 import { isPositive, toInputAmount, tryParseMoney } from '../../domain/money'
 import type { PaymentMethod } from '../../domain/parser'
 import { CardImpact } from '../entry/CardImpact'
@@ -56,6 +63,8 @@ interface Fields {
   card: string
   /** Número de parcelas; vazio é à vista. */
   installments: string
+  /** Parcelada de antes do início do cartão: quantas faltam depois da fatura do início. */
+  remaining: string
 }
 
 /** Atalho da tela do cartão: `/lancamentos/novo?card=…&date=…`. */
@@ -78,6 +87,7 @@ function fieldsOf(initial: TransactionOut | undefined, defaults: FormDefaults): 
     category: initial?.category_id ?? AUTOMATIC,
     card: initial ? (initial.card_id ?? '') : (defaults.cardId ?? ''),
     installments: initial?.installments ? String(initial.installments) : '',
+    remaining: '',
   }
 }
 
@@ -115,7 +125,13 @@ function changedFields(initial: TransactionOut, f: Fields, amount: string, date:
   return patch
 }
 
-function newBody(f: Fields, amount: string, date: string): ExpenseIn | IncomeIn | TransferIn {
+/** `inProgress`: compra no cartão de antes do início dele (só as parcelas que faltam). */
+function newBody(
+  f: Fields,
+  amount: string,
+  date: string,
+  inProgress: boolean,
+): ExpenseIn | IncomeIn | TransferIn {
   const common = { amount, occurred_on: date, description: f.description.trim() }
   const notes = f.notes.trim() ? { notes: f.notes.trim() } : {}
   if (f.type === 'TRANSFER') {
@@ -140,6 +156,7 @@ function newBody(f: Fields, amount: string, date: string): ExpenseIn | IncomeIn 
       ...common,
       card_id: f.card,
       ...(installments !== null ? { installments } : {}),
+      ...(inProgress && f.remaining ? { remaining_installments: Number(f.remaining) } : {}),
       ...extra,
     }
   }
@@ -186,6 +203,21 @@ export function TransactionForm({ initial, defaults = {}, onDone, onCancel }: Pr
   const onCard = f.card !== ''
   const cards = hints.data?.cards ?? []
   const missingCard = onCard && hints.data !== undefined && !cards.some((c) => c.id === f.card)
+  // Compra no cartão com data de antes do início dele: parcelada que já vinha correndo. Só as
+  // parcelas que faltam entram; à vista, ela já está no total da fatura do início.
+  const cardInfo = useCards().data?.find((c) => c.id === f.card)
+  const beforeStart =
+    !editing && f.type === 'EXPENSE' && cardInfo !== undefined && !!date && date < cardInfo.opening_date
+  const startCycle = useCardCycle(
+    beforeStart
+      ? {
+          closingDay: cardInfo.closing_day,
+          dueDay: cardInfo.due_day,
+          openingDate: cardInfo.opening_date,
+        }
+      : null,
+  ).data
+  const installmentCount = installmentsOf(f)
 
   function validate(amount: string | null): Errors {
     const local: Errors = {}
@@ -196,6 +228,8 @@ export function TransactionForm({ initial, defaults = {}, onDone, onCancel }: Pr
     if (!onCard && !f.account) local.account_id = 'Escolha a conta.'
     if (f.type === 'TRANSFER' && !f.destination) local.destination_account_id = 'Escolha a conta de destino.'
     if (f.type === 'EXPENSE' && !onCard && !f.method) local.payment_method = 'Escolha o meio de pagamento.'
+    if (beforeStart && installmentCount === null) local.installments = 'Escolha as parcelas da compra.'
+    else if (beforeStart && !f.remaining) local.remaining_installments = 'Escolha quantas parcelas faltam.'
     return local
   }
 
@@ -217,7 +251,7 @@ export function TransactionForm({ initial, defaults = {}, onDone, onCancel }: Pr
       }
       request = api.updateTransaction(initial.id, patch)
     } else {
-      const body = newBody(f, amount, date)
+      const body = newBody(f, amount, date, beforeStart)
       request = api.createTransaction(body, keyFor(body))
     }
 
@@ -284,7 +318,7 @@ export function TransactionForm({ initial, defaults = {}, onDone, onCancel }: Pr
       )}
       <MoneyInput
         id={`${id}-amount`}
-        label="Valor"
+        label={beforeStart ? 'Valor total' : 'Valor'}
         value={f.amount}
         onChange={set('amount')}
         error={errors.amount}
@@ -367,7 +401,7 @@ export function TransactionForm({ initial, defaults = {}, onDone, onCancel }: Pr
           <select
             id={`${id}-installments`}
             value={f.installments}
-            onChange={(e) => set('installments')(e.target.value)}
+            onChange={(e) => setF((p) => ({ ...p, installments: e.target.value, remaining: '' }))}
             {...invalid(`${id}-installments`, errors.installments)}
             className={inputClass}
           >
@@ -381,7 +415,22 @@ export function TransactionForm({ initial, defaults = {}, onDone, onCancel }: Pr
         </Field>
       )}
 
-      {!editing && f.type === 'EXPENSE' && onCard && <CardImpact input={previewOf(f, date)} />}
+      {beforeStart && (
+        <InProgressFields
+          id={`${id}-remaining`}
+          count={installmentCount}
+          openingDate={cardInfo.opening_date}
+          openMonth={startCycle ? monthName(startCycle.open_reference_month) : null}
+          nextMonth={startCycle ? monthName(startCycle.next_reference_month) : null}
+          value={f.remaining}
+          error={errors.remaining_installments}
+          onChange={set('remaining')}
+        />
+      )}
+
+      {!editing && f.type === 'EXPENSE' && onCard && !beforeStart && (
+        <CardImpact input={previewOf(f, date)} />
+      )}
 
       {f.type === 'EXPENSE' && !onCard && (
         <Field id={`${id}-method`} label="Meio" error={errors.payment_method}>
@@ -448,6 +497,71 @@ export function TransactionForm({ initial, defaults = {}, onDone, onCancel }: Pr
         )}
       </div>
     </form>
+  )
+}
+
+/** "2026-09-01" → "01/09/2026". */
+function fullDate(iso: string): string {
+  return iso.split('-').reverse().join('/')
+}
+
+/** Parcelada que já corria antes do início do cartão: quantas faltam, ou o aviso se à vista. */
+function InProgressFields({
+  id,
+  count,
+  openingDate,
+  openMonth,
+  nextMonth,
+  value,
+  error,
+  onChange,
+}: {
+  id: string
+  count: number | null
+  openingDate: string
+  /** Fatura aberta no início do cartão; nula enquanto não se sabe (rótulo genérico). */
+  openMonth: string | null
+  nextMonth: string | null
+  value: string
+  error: string | undefined
+  onChange: (value: string) => void
+}) {
+  if (count === null) {
+    return (
+      <p className="text-sm text-ink-soft">
+        Compra à vista de antes do início do cartão já está no total da fatura
+        {openMonth ? ` de ${openMonth}` : ' do início'} (ou já foi paga): não precisa lançar.
+      </p>
+    )
+  }
+  return (
+    <>
+      <p className="text-sm text-ink-soft">
+        Compra de antes de o cartão entrar no app (início em {fullDate(openingDate)}): só as
+        parcelas que ainda faltam entram nas próximas faturas
+        {nextMonth ? `, a partir da de ${nextMonth}` : ''}.
+      </p>
+      <Field
+        id={id}
+        label={`Quantas faltam depois da fatura ${openMonth ? `de ${openMonth}` : 'do início'}`}
+        error={error}
+      >
+        <select
+          id={id}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          {...invalid(id, error)}
+          className={inputClass}
+        >
+          <option value="">Escolha</option>
+          {Array.from({ length: count - 1 }, (_, k) => k + 1).map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+      </Field>
+    </>
   )
 }
 
