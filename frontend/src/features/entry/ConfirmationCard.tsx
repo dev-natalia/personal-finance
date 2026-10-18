@@ -109,7 +109,7 @@ export function ConfirmationCard({ parsed, text, hints, onSaved, onClose }: Prop
   async function confirm() {
     if (busy) return
     setBusy(true)
-    recordMisread(text, changeReasons(initialItems.current, items))
+    recordMisread(text, changeReasons(parsed, initialItems.current, items))
     const saved: SavedEntry[] = []
     const savedNow = new Set<number>()
     let failures = 0

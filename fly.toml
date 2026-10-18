@@ -6,6 +6,12 @@ primary_region = "gru"
 [build]
   dockerfile = "Dockerfile"
 
+[deploy]
+  # Migrações numa máquina temporária com a imagem nova, antes de tocar na do app: se
+  # falharem, o deploy para e a versão anterior continua no ar. (O start.sh também roda
+  # `alembic upgrade head`, que aí não tem nada a fazer; ele fica para o docker compose.)
+  release_command = "alembic upgrade head"
+
 [env]
   APP_ORIGIN = "https://caderno-de-gastos.fly.dev"
   COOKIE_SECURE = "true"

@@ -33,13 +33,13 @@ test('pending and change reasons ignore category', () => {
   ).toEqual(['PENDING_ACCOUNT', 'PENDING_AMOUNT', 'PENDING_DESCRIPTION', 'PENDING_PAYMENT_METHOD'])
 
   const initial = initCard([parsed(), parsed({ raw: '6x 300 tênis nubank', cardId: 'card-nubank' })])
-  expect(changeReasons(initial, initial)).toEqual([])
-  expect(changeReasons(initial, [edit(initial[0]!, { categoryId: 'cat-mercado' }), initial[1]!])).toEqual(
+  expect(changeReasons([parsed(), parsed()], initial, initial)).toEqual([])
+  expect(changeReasons([parsed(), parsed()], initial, [edit(initial[0]!, { categoryId: 'cat-mercado' }), initial[1]!])).toEqual(
     [],
   )
   // Os dados do envio (status, chave, avisos) também não contam.
   expect(
-    changeReasons(initial, [edit(initial[0]!, { status: 'saved', key: 'outra', warnings: ['x'] }), initial[1]!]),
+    changeReasons([parsed(), parsed()], initial, [edit(initial[0]!, { status: 'saved', key: 'outra', warnings: ['x'] }), initial[1]!]),
   ).toEqual([])
 
   const changed = [
@@ -53,7 +53,7 @@ test('pending and change reasons ignore category', () => {
     }),
     edit(initial[1]!, { installments: 6, included: false }),
   ]
-  expect(changeReasons(initial, changed)).toEqual([
+  expect(changeReasons([parsed(), parsed()], initial, changed)).toEqual([
     'CHANGED_AMOUNT',
     'CHANGED_DATE',
     'CHANGED_DESCRIPTION',
@@ -63,11 +63,30 @@ test('pending and change reasons ignore category', () => {
     'CHANGED_TYPE',
     'UNCHECKED_ITEM',
   ])
-  expect(changeReasons(initial, [edit(initial[0]!, { cardId: 'card-nubank' }), initial[1]!])).toEqual([
+  expect(changeReasons([parsed(), parsed()], initial, [edit(initial[0]!, { cardId: 'card-nubank' }), initial[1]!])).toEqual([
     'CHANGED_SOURCE',
   ])
   // Só espaços na descrição não é mudança de entendimento.
-  expect(changeReasons(initial, [edit(initial[0]!, { description: ' mercado ' }), initial[1]!])).toEqual(
+  expect(changeReasons([parsed(), parsed()], initial, [edit(initial[0]!, { description: ' mercado ' }), initial[1]!])).toEqual(
     [],
   )
+})
+
+test('filling in what was pending is not a correction', () => {
+  const items = [
+    parsed({ amount: null, pending: ['amount'] }),
+    parsed({ accountId: null, paymentMethod: null, pending: ['account', 'paymentMethod'] }),
+    parsed({ description: null, pending: ['description'] }),
+  ]
+  const initial = initCard(items)
+  const filled = [
+    edit(initial[0]!, { amountText: '42,00' }),
+    edit(initial[1]!, { cardId: 'card-nubank', paymentMethod: 'CREDIT' }),
+    edit(initial[2]!, { description: 'mercado' }),
+  ]
+  expect(changeReasons(items, initial, filled)).toEqual([])
+  // O que não estava pendente continua contando.
+  expect(changeReasons(items, initial, [edit(filled[0]!, { occurredOn: '2026-10-14' }), filled[1]!, filled[2]!])).toEqual([
+    'CHANGED_DATE',
+  ])
 })

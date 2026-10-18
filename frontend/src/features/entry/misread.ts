@@ -34,14 +34,33 @@ export function pendingReasons(parsed: ParsedItem[]): MisreadReason[] {
   return sorted(new Set(parsed.flatMap((item) => item.pending.map((field) => PENDING[field]))))
 }
 
-/** O que mudou entre o comprovante como abriu (`initial`) e como foi confirmado (`final`). */
-export function changeReasons(initial: CardItem[], final: CardItem[]): MisreadReason[] {
+/**
+ * Preencher o que ficou pendente já está contado em `pendingReasons`: não é correção.
+ * Conta ou meio pendente cobre os dois, porque escolher a opção de pagamento define ambos.
+ */
+const FILLS: Record<PendingField, MisreadReason[]> = {
+  amount: ['CHANGED_AMOUNT'],
+  description: ['CHANGED_DESCRIPTION'],
+  account: ['CHANGED_SOURCE', 'CHANGED_PAYMENT_METHOD'],
+  paymentMethod: ['CHANGED_SOURCE', 'CHANGED_PAYMENT_METHOD'],
+}
+
+/**
+ * O que a usuária corrigiu entre o comprovante como abriu (`initial`, vindo de `parsed`) e
+ * como foi confirmado (`final`).
+ */
+export function changeReasons(
+  parsed: ParsedItem[],
+  initial: CardItem[],
+  final: CardItem[],
+): MisreadReason[] {
   const reasons = new Set<MisreadReason>()
   initial.forEach((before, index) => {
     const after = final[index]
     if (!after) return
+    const filled = new Set((parsed[index]?.pending ?? []).flatMap((field) => FILLS[field]))
     for (const [reason, value] of CHANGES) {
-      if (value(before) !== value(after)) reasons.add(reason)
+      if (!filled.has(reason) && value(before) !== value(after)) reasons.add(reason)
     }
     if (before.included && !after.included) reasons.add('UNCHECKED_ITEM')
   })

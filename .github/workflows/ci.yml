@@ -8,9 +8,11 @@ on:
 permissions:
   contents: read
 
+# Em PRs, um push novo cancela a checagem antiga. Na main nunca: cancelaria o deploy em
+# andamento junto (o grupo do job deploy não sobrepõe o do workflow); os runs esperam a vez.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   backend:
