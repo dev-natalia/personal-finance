@@ -100,4 +100,4 @@ jobs:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
       - name: Conferir que o app respondeu
-        run: curl --fail --silent --show-error --retry 10 --retry-delay 6 --retry-all-errors "https://financas-pessoais.fly.dev/api/v1/health"
+        run: curl --fail --silent --show-error --retry 10 --retry-delay 6 --retry-all-errors "https://caderno-de-gastos.fly.dev/api/v1/health"

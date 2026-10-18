@@ -1,13 +1,13 @@
 # Publicação no Fly.io (ver README, "Publicação"). O nome do app é confirmado ao criá-lo;
 # se mudar, APP_ORIGIN muda junto.
-app = "financas-pessoais"
+app = "caderno-de-gastos"
 primary_region = "gru"
 
 [build]
   dockerfile = "Dockerfile"
 
 [env]
-  APP_ORIGIN = "https://financas-pessoais.fly.dev"
+  APP_ORIGIN = "https://caderno-de-gastos.fly.dev"
   COOKIE_SECURE = "true"
   # O IP real vem do cabeçalho do proxy do Fly; X-Forwarded-For não é confiado
   # (FORWARDED_ALLOW_IPS fica no padrão da imagem, 127.0.0.1).

@@ -24,7 +24,7 @@ ENV = {
     "R2_BUCKET": "financas-backup",
     "R2_ACCESS_KEY_ID": "AKID",
     "R2_SECRET_ACCESS_KEY": R2_SECRET,
-    "APP_URL": "https://financas-pessoais.fly.dev",
+    "APP_URL": "https://caderno-de-gastos.fly.dev",
     "BACKUP_REPORT_TOKEN": REPORT_TOKEN,
 }
 ENCRYPTED = b"age-encrypted-bytes"
@@ -105,7 +105,7 @@ def test_runs_dump_encrypt_upload_and_report_in_order() -> None:
         assert upload.input == f'user = "AKID:{R2_SECRET}"\n'.encode()
 
     report = runner.calls[3]
-    assert report.cmd[-1] == "https://financas-pessoais.fly.dev/api/v1/internal/backup-report"
+    assert report.cmd[-1] == "https://caderno-de-gastos.fly.dev/api/v1/internal/backup-report"
     body = json.loads(report.cmd[report.cmd.index("--data") + 1])
     assert body == {"object_key": "daily/2026-11-01.sql.gz.age", "size_bytes": len(ENCRYPTED)}
     assert report.input == f'header = "Authorization: Bearer {REPORT_TOKEN}"\n'.encode()

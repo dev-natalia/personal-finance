@@ -145,8 +145,8 @@ São dois apps no Fly, cada um só com os segredos de que precisa:
 
 | App | O que roda | Segredos |
 |---|---|---|
-| `financas-pessoais` | o site e a API (`fly.toml`) | `DATABASE_URL`, `SECRET_KEY`, `BACKUP_REPORT_TOKEN` |
-| `financas-pessoais-backup` | uma máquina agendada, uma vez por dia (`scripts/backup.sh`) | `BACKUP_DATABASE_URL` (só leitura), chaves do R2, `BACKUP_AGE_RECIPIENT`, `APP_URL`, `BACKUP_REPORT_TOKEN` |
+| `caderno-de-gastos` | o site e a API (`fly.toml`) | `DATABASE_URL`, `SECRET_KEY`, `BACKUP_REPORT_TOKEN` |
+| `caderno-de-gastos-backup` | uma máquina agendada, uma vez por dia (`scripts/backup.sh`) | `BACKUP_DATABASE_URL` (só leitura), chaves do R2, `BACKUP_AGE_RECIPIENT`, `APP_URL`, `BACKUP_REPORT_TOKEN` |
 
 Nenhum segredo vai na linha de comando: o `fly secrets import` lê `NOME=valor` da entrada (cole as linhas e termine com Ctrl+Z e Enter no Windows, Ctrl+D no Linux/macOS).
 
@@ -189,44 +189,44 @@ A saída tem a chave privada (`AGE-SECRET-KEY-1…`): guarde-a **só** no gerenc
 ### 5. App
 
 ```bash
-fly apps create financas-pessoais
-fly secrets import -a financas-pessoais --stage        # DATABASE_URL, SECRET_KEY, BACKUP_REPORT_TOKEN
+fly apps create caderno-de-gastos
+fly secrets import -a caderno-de-gastos --stage        # DATABASE_URL, SECRET_KEY, BACKUP_REPORT_TOKEN
 fly deploy --remote-only --ha=false                     # --ha=false: uma máquina só (o padrão cria duas)
-curl https://financas-pessoais.fly.dev/api/v1/health
+curl https://caderno-de-gastos.fly.dev/api/v1/health
 ```
 
-`SECRET_KEY` e `BACKUP_REPORT_TOKEN`: 32 caracteres aleatórios ou mais cada (`python -c "import secrets; print(secrets.token_urlsafe(32))"`). Se o nome `financas-pessoais` estiver ocupado, troque-o junto em `fly.toml` (`app` e `APP_ORIGIN`) e no health check do `ci.yml`.
+`SECRET_KEY` e `BACKUP_REPORT_TOKEN`: 32 caracteres aleatórios ou mais cada (`python -c "import secrets; print(secrets.token_urlsafe(32))"`). Se o nome `caderno-de-gastos` estiver ocupado, troque-o junto em `fly.toml` (`app` e `APP_ORIGIN`) e no health check do `ci.yml`.
 
 **Publicação automática.** Token de deploy só deste app como segredo do GitHub:
 
 ```bash
-fly tokens create deploy -a financas-pessoais | gh secret set FLY_API_TOKEN
+fly tokens create deploy -a caderno-de-gastos | gh secret set FLY_API_TOKEN
 ```
 
 ### 6. Sua usuária
 
 ```bash
-fly ssh console -a financas-pessoais
+fly ssh console -a caderno-de-gastos
 python -m app.cli create-user --email voce@example.com   # dentro da máquina; a senha é pedida sem aparecer
 ```
 
 ### 7. Backup diário
 
 ```bash
-fly apps create financas-pessoais-backup
-fly secrets import -a financas-pessoais-backup --stage
+fly apps create caderno-de-gastos-backup
+fly secrets import -a caderno-de-gastos-backup --stage
 #   BACKUP_DATABASE_URL, BACKUP_AGE_RECIPIENT, R2_ENDPOINT, R2_BUCKET,
-#   R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, APP_URL=https://financas-pessoais.fly.dev,
+#   R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, APP_URL=https://caderno-de-gastos.fly.dev,
 #   BACKUP_REPORT_TOKEN (o mesmo do app)
-fly deploy --build-only --push --remote-only -a financas-pessoais-backup --image-label backup
-fly machine run registry.fly.io/financas-pessoais-backup:backup sh scripts/backup.sh \
-  -a financas-pessoais-backup --region gru --vm-memory 256 \
+fly deploy --build-only --push --remote-only -a caderno-de-gastos-backup --image-label backup
+fly machine run registry.fly.io/caderno-de-gastos-backup:backup sh scripts/backup.sh \
+  -a caderno-de-gastos-backup --region gru --vm-memory 256 \
   --schedule daily --restart on-fail
 ```
 
-O Fly roda a máquina uma vez por dia, contando a partir da criação (sem horário fixo); `--restart on-fail` faz ela parar depois de cada execução (sem ele, reiniciaria sem fim) e tentar de novo se falhar. Para rodar agora: `fly machine start <id> -a financas-pessoais-backup`; o resultado aparece em `fly logs -a financas-pessoais-backup` e em "Mais" → "Último backup". O app avisa na tela inicial quando o último backup tem mais de 2 dias.
+O Fly roda a máquina uma vez por dia, contando a partir da criação (sem horário fixo); `--restart on-fail` faz ela parar depois de cada execução (sem ele, reiniciaria sem fim) e tentar de novo se falhar. Para rodar agora: `fly machine start <id> -a caderno-de-gastos-backup`; o resultado aparece em `fly logs -a caderno-de-gastos-backup` e em "Mais" → "Último backup". O app avisa na tela inicial quando o último backup tem mais de 2 dias.
 
-A máquina usa a imagem do momento em que foi criada. Se `app/backup.py` mudar, repita o `fly deploy --build-only …` e troque a imagem: `fly machine update <id> -a financas-pessoais-backup --image registry.fly.io/financas-pessoais-backup:backup`.
+A máquina usa a imagem do momento em que foi criada. Se `app/backup.py` mudar, repita o `fly deploy --build-only …` e troque a imagem: `fly machine update <id> -a caderno-de-gastos-backup --image registry.fly.io/caderno-de-gastos-backup:backup`.
 
 ### 8. Restaurar um backup
 
