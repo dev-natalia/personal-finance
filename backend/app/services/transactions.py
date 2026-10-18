@@ -325,8 +325,8 @@ def _check_card_dates(card: Card, occurred_on: date, remaining: int | None) -> N
     elif occurred_on < card.opening_date:
         raise RuleViolation(
             "purchase_before_card_opening",
-            "A compra é anterior ao início do cartão. Para parcelas que já estavam correndo, "
-            "informe quantas faltam.",
+            "Essa compra é de antes de o cartão entrar no app. Para uma parcelada que já vinha "
+            "correndo, use o formulário completo: ele pergunta quantas parcelas faltam.",
         )
 
 

@@ -161,6 +161,11 @@ def test_purchase_before_card_opening_is_rejected(
     with pytest.raises(RuleViolation) as error:
         transactions.create_transaction(db, ctx, _purchase(card, occurred_on=date(2026, 9, 30)))
     assert error.value.code == "purchase_before_card_opening"
+    # A mensagem leva ao lugar onde a parcelada antiga pode ser lançada.
+    assert error.value.detail == (
+        "Essa compra é de antes de o cartão entrar no app. Para uma parcelada que já vinha "
+        "correndo, use o formulário completo: ele pergunta quantas parcelas faltam."
+    )
 
 
 def test_in_progress_purchase_after_opening_is_rejected(
