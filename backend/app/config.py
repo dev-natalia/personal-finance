@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     session_idle_days: int = 30
     session_max_days: int = 90
     log_level: str = "INFO"
+    # Cabeçalho com o IP real definido pelo proxy da hospedagem (no Fly.io: "Fly-Client-IP").
+    # Vazio = IP da conexão. Só configure quando o app não for alcançável fora desse proxy.
+    client_ip_header: str | None = None
     # Pasta do build do frontend (frontend/dist). Vazio = só a API (desenvolvimento).
     frontend_dist: str | None = None
 

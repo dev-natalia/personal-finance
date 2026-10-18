@@ -1,0 +1,33 @@
+# Publicação no Fly.io (ver README, "Publicação"). O nome do app é confirmado ao criá-lo;
+# se mudar, APP_ORIGIN muda junto.
+app = "financas-pessoais"
+primary_region = "gru"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  APP_ORIGIN = "https://financas-pessoais.fly.dev"
+  COOKIE_SECURE = "true"
+  # O IP real vem do cabeçalho do proxy do Fly; X-Forwarded-For não é confiado
+  # (FORWARDED_ALLOW_IPS fica no padrão da imagem, 127.0.0.1).
+  CLIENT_IP_HEADER = "Fly-Client-IP"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # Sempre ligada: só o banco (Neon) "dorme"; o app responde sem esperar subir.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "15s"
+    method = "GET"
+    path = "/api/v1/health"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

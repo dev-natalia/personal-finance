@@ -9,6 +9,16 @@ from app.services import auth
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def _client_ip(request: Request, header: str | None) -> str:
+    """IP usado no limite de tentativas. Atrás de um proxy que define o cabeçalho (e que é o
+    único caminho até o app), vale o dele; X-Forwarded-For nunca decide, pois o cliente o forja."""
+    if header:
+        value = request.headers.get(header, "").strip()
+        if value:
+            return value[:64]
+    return request.client.host if request.client else "unknown"
+
+
 @router.post("/login", response_model=UserOut)
 def login(
     body: LoginIn,
@@ -19,7 +29,7 @@ def login(
     clock: ClockDep,
     settings: SettingsDep,
 ) -> User:
-    ip = request.client.host if request.client else "unknown"
+    ip = _client_ip(request, settings.client_ip_header)
     outcome = auth.login(db, policy, body.email, body.password, ip, clock.now())
     db.commit()  # a tentativa fica registrada mesmo quando o login falha
     if outcome.blocked:

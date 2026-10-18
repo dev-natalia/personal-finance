@@ -75,3 +75,29 @@ jobs:
 
       - name: Tipos, testes e build
         run: npm run check
+
+  deploy:
+    name: Publicar no Fly.io
+    # Só a main, só depois das checagens; PRs nunca publicam.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Um deploy em andamento nunca é cancelado por outro push.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@1.6
+
+      - name: Publicar
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Conferir que o app respondeu
+        run: curl --fail --silent --show-error --retry 10 --retry-delay 6 --retry-all-errors "https://financas-pessoais.fly.dev/api/v1/health"
