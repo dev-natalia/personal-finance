@@ -4,6 +4,7 @@ from app.api.routes import (
     accounts,
     analysis,
     auth,
+    backups,
     cards,
     categories,
     entry,
@@ -28,3 +29,4 @@ api_router.include_router(entry.router)
 api_router.include_router(summaries.router)
 api_router.include_router(analysis.router)
 api_router.include_router(misread_phrases.router)
+api_router.include_router(backups.router)

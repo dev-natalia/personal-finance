@@ -1,5 +1,6 @@
 from app.models.account import Account, AccountType
 from app.models.audit import Actor, AuditAction, AuditLog
+from app.models.backup_report import BackupReport
 from app.models.base import Base, OwnedModel
 from app.models.card import Card
 from app.models.category import Category, CategoryKind
@@ -22,6 +23,7 @@ __all__ = [
     "Actor",
     "AuditAction",
     "AuditLog",
+    "BackupReport",
     "Base",
     "Card",
     "Category",

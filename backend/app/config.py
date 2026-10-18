@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     # Cabeçalho com o IP real definido pelo proxy da hospedagem (no Fly.io: "Fly-Client-IP").
     # Vazio = IP da conexão. Só configure quando o app não for alcançável fora desse proxy.
     client_ip_header: str | None = None
+    # Token que a máquina de backup usa para avisar que terminou. Vazio = rota desligada (404).
+    backup_report_token: SecretStr | None = None
     # Pasta do build do frontend (frontend/dist). Vazio = só a API (desenvolvimento).
     frontend_dist: str | None = None
 
@@ -28,6 +30,13 @@ class Settings(BaseSettings):
     def _secret_long_enough(cls, value: SecretStr) -> SecretStr:
         if len(value.get_secret_value()) < 32:
             raise ValueError("SECRET_KEY deve ter pelo menos 32 caracteres.")
+        return value
+
+    @field_validator("backup_report_token")
+    @classmethod
+    def _backup_token_long_enough(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and len(value.get_secret_value()) < 32:
+            raise ValueError("BACKUP_REPORT_TOKEN deve ter pelo menos 32 caracteres.")
         return value
 
 
