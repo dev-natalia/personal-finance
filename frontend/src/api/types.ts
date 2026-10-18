@@ -62,3 +62,9 @@ export type DayTotalOut = Schemas['DayTotalOut']
 export type DaySpendingOut = Schemas['DaySpendingOut']
 export type PlaceDetailOut = Schemas['PlaceDetailOut']
 export type PlaceTotalsOut = Schemas['PlaceTotalsOut']
+
+// Publicação: frases não entendidas e backup
+export type MisreadPhraseIn = Schemas['MisreadPhraseIn']
+export type MisreadPhraseOut = Schemas['MisreadPhraseOut']
+export type MisreadReason = Schemas['MisreadReason']
+export type BackupStatusOut = Schemas['BackupStatusOut']

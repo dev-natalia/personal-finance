@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router'
+import { Link, useLocation, useNavigate } from 'react-router'
 
-import { useEntryHints } from '../../api/queries'
+import { useBackupStatus, useEntryHints } from '../../api/queries'
 import { type ParsedItem, batchHeader, parseEntry } from '../../domain/parser'
 import { OfflineBanner } from '../../ui/OfflineBanner'
+import { linkClass } from '../../ui/styles'
 import { useOnlineStatus } from '../../ui/useOnlineStatus'
 import { ConfirmationCard } from '../entry/ConfirmationCard'
 import type { SavedEntry } from '../entry/describe'
+import { recordMisread } from '../entry/misread'
 import { BalanceHeader } from './BalanceHeader'
 import { Composer } from './Composer'
 import { loadDraft, saveDraft } from './draft'
@@ -32,6 +34,9 @@ function remainingText(card: OpenCard, unsaved: number[]): string {
 /** Tela inicial em formato de conversa: livro-caixa em cima, campo de texto embaixo. */
 export function HomePage() {
   const hints = useEntryHints()
+  const backup = useBackupStatus()
+  // Dica quando a frase não virou nenhum lançamento; some ao mexer no texto.
+  const [notUnderstood, setNotUnderstood] = useState(false)
   const online = useOnlineStatus()
   const [card, setCard] = useState<OpenCard | null>(null)
   const [text, setText] = useState(loadDraft)
@@ -60,6 +65,7 @@ export function HomePage() {
 
   function changeText(value: string) {
     setText(value)
+    setNotUnderstood(false)
     persist(value)
   }
 
@@ -70,7 +76,11 @@ export function HomePage() {
       accounts: hints.data.accounts,
       cards: hints.data.cards,
     })
-    if (parsed.length === 0) return
+    if (parsed.length === 0) {
+      setNotUnderstood(true)
+      recordMisread(value, ['NOTHING_PARSED'])
+      return
+    }
     setCard({ id: Date.now(), parsed, text: value, today: hints.data.today })
     pendingCard.current = value
     changeText('')
@@ -90,6 +100,16 @@ export function HomePage() {
     <div className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-2xl flex-col px-4 md:min-h-dvh">
       <h1 className="sr-only">Início</h1>
       <BalanceHeader />
+      {backup.data?.stale && (
+        <p className="mb-2 text-sm text-stamp">
+          {backup.data.last_success_at
+            ? 'O backup não roda há mais de 2 dias.'
+            : 'O backup ainda não rodou.'}{' '}
+          <Link to="/mais" className={linkClass}>
+            Ver em Mais
+          </Link>
+        </p>
+      )}
       <div className="flex-1">
         {hints.data && (
           <Timeline today={hints.data.today} names={names} sessionEntries={entries} />
@@ -99,6 +119,7 @@ export function HomePage() {
         <ConfirmationCard
           key={card.id}
           parsed={card.parsed}
+          text={card.text}
           hints={hints.data}
           onSaved={(saved, unsaved) => {
             settle(card, unsaved)
@@ -117,6 +138,9 @@ export function HomePage() {
       )}
       {!online && <OfflineBanner />}
       <div className="sticky bottom-16 bg-paper pt-2 md:bottom-0">
+        <p role="status" className="px-1 text-sm text-ink-soft empty:hidden">
+          {notUnderstood ? "Não entendi essa frase. Tente como '42 mercado pix itaú'." : ''}
+        </p>
         <Composer
           value={text}
           onChange={changeText}

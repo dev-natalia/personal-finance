@@ -28,3 +28,8 @@ def test_settings_require_database_url(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_settings_reject_short_secret() -> None:
     with pytest.raises(ValidationError):
         Settings(_env_file=None, **{**VALID, "secret_key": "curta"})
+
+
+def test_settings_reject_short_backup_report_token() -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, **{**VALID, "backup_report_token": "curto"})

@@ -11,6 +11,9 @@ RUN npm run build
 
 # 2) Backend: dependências travadas no uv.lock, sem as de desenvolvimento.
 FROM python:3.14-slim AS app
+# Ferramentas do backup (python -m app.backup): pg_dump do repositório oficial do PostgreSQL,
+# na versão 18, que também copia servidores mais antigos; age (criptografia) e curl (envio ao R2).
+RUN apt-get update  && apt-get install -y --no-install-recommends postgresql-common ca-certificates  && /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y  && apt-get install -y --no-install-recommends postgresql-client-18 age curl  && rm -rf /var/lib/apt/lists/*
 COPY --from=ghcr.io/astral-sh/uv:0.11.19 /uv /bin/uv
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \

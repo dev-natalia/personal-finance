@@ -33,7 +33,7 @@ export class ApiError extends Error {
 export const UNAUTHENTICATED_EVENT = 'pf:unauthenticated'
 
 export interface FetchOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'PATCH'
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: unknown
   headers?: Record<string, string>
   signal?: AbortSignal

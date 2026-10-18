@@ -14,6 +14,8 @@ from app.config import Settings
 logger = logging.getLogger("app.access")
 
 UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+# Rotas chamadas por máquinas com token próprio (sem cookie): CSRF não se aplica.
+TOKEN_ONLY_PREFIX = "/api/v1/internal/"
 
 
 def install_middlewares(app: FastAPI, settings: Settings) -> None:
@@ -21,7 +23,12 @@ def install_middlewares(app: FastAPI, settings: Settings) -> None:
 
     @app.middleware("http")
     async def csrf_guard(request: Request, call_next: RequestResponseEndpoint) -> Response:
-        if request.method in UNSAFE_METHODS and request.url.path.startswith("/api/"):
+        path = request.url.path
+        if (
+            request.method in UNSAFE_METHODS
+            and path.startswith("/api/")
+            and not path.startswith(TOKEN_ONLY_PREFIX)
+        ):
             same_origin = request.headers.get("origin") == settings.app_origin
             if not same_origin or "x-requested-with" not in request.headers:
                 return problem(

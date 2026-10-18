@@ -5,6 +5,7 @@ import type {
   DaySpendingOut,
   PlaceDetailOut,
   AccountArchiveOut,
+  BackupStatusOut,
   AccountIn,
   AccountOut,
   AccountPatch,
@@ -32,6 +33,8 @@ import type {
   InvoicePaymentOut,
   InvoiceSummaryOut,
   MerchantOut,
+  MisreadPhraseIn,
+  MisreadPhraseOut,
   MonthSummaryOut,
   PaymentGroupVoidOut,
   PreviewIn,
@@ -184,4 +187,12 @@ export const api = {
     apiFetch<TransactionPage>(`${V1}/analysis/place/transactions${query({ key, ...params })}`),
   monthSummary: (month: string) =>
     apiFetch<MonthSummaryOut>(`${V1}/summaries/month${query({ month })}`),
+
+  misreadPhrases: () => apiFetch<MisreadPhraseOut[]>(`${V1}/misread-phrases`),
+  recordMisread: (body: MisreadPhraseIn) =>
+    apiFetch<MisreadPhraseOut>(`${V1}/misread-phrases`, { method: 'POST', body }),
+  deleteMisreadPhrase: (id: string) =>
+    apiFetch<void>(`${V1}/misread-phrases/${id}`, { method: 'DELETE' }),
+  deleteAllMisreadPhrases: () => apiFetch<void>(`${V1}/misread-phrases`, { method: 'DELETE' }),
+  backupStatus: () => apiFetch<BackupStatusOut>(`${V1}/backup-status`),
 }

@@ -3,13 +3,14 @@ import logging
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
 from app.config import Settings
 from app.domain.dates import Clock
 from app.main import create_app
-from app.models import User
+from app.models import LoginAttempt, User
 from tests.api.conftest import ORIGIN, build_client, login
 from tests.support import PASSWORD
 
@@ -132,3 +133,30 @@ def test_uvicorn_access_log_is_disabled(settings: Settings, clock: Clock) -> Non
     """O log de acesso do uvicorn grava a query string (ex.: ?q=<estabelecimento>)."""
     create_app(settings, clock=clock)
     assert logging.getLogger("uvicorn.access").disabled
+
+
+def test_client_ip_comes_from_the_configured_proxy_header(
+    settings: Settings, db: Session, clock: Clock, user: User
+) -> None:
+    """No Fly, o IP real vem do cabeçalho que o proxy deles define; X-Forwarded-For, que o
+    cliente pode inventar, nunca decide o IP usado no limite de tentativas."""
+    configured = settings.model_copy(update={"client_ip_header": "Fly-Client-IP"})
+    with build_client(configured, db, clock) as client:
+        client.post(
+            "/api/v1/auth/login",
+            json={"email": "ana@example.com", "password": "errada"},
+            headers={"Fly-Client-IP": "203.0.113.7", "X-Forwarded-For": "198.51.100.1"},
+        )
+    ips = db.scalars(select(LoginAttempt.ip)).all()
+    assert ips == ["203.0.113.7"]
+
+
+def test_proxy_header_is_ignored_unless_configured(
+    client: TestClient, db: Session, user: User
+) -> None:
+    client.post(
+        "/api/v1/auth/login",
+        json={"email": "ana@example.com", "password": "errada"},
+        headers={"Fly-Client-IP": "203.0.113.7"},
+    )
+    assert db.scalars(select(LoginAttempt.ip)).all() == ["testclient"]

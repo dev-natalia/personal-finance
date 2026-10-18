@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { addDays, dayLabel, firstDayOfMonth, matchDate, shortDate, weekdayIndex } from './dates'
+import { addDays, dayAndTime, dayLabel, firstDayOfMonth, matchDate, shortDate, weekdayIndex } from './dates'
 
 const TODAY = '2026-10-15'
 
@@ -76,4 +76,9 @@ test('weekdayIndex counts from monday', () => {
   expect(weekdayIndex('2026-10-12')).toBe(0) // segunda
   expect(weekdayIndex('2026-10-01')).toBe(3) // quinta
   expect(weekdayIndex('2026-10-18')).toBe(6) // domingo
+})
+
+test('dayAndTime shows the instant in the given time zone', () => {
+  expect(dayAndTime('2026-10-15T06:00:00Z', 'America/Sao_Paulo')).toBe('15/10 às 03:00')
+  expect(dayAndTime('2026-10-15T02:30:00Z', 'America/Sao_Paulo')).toBe('14/10 às 23:30')
 })

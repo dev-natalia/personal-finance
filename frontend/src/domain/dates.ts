@@ -118,3 +118,20 @@ export function weekdayIndex(iso: string): number {
   const [year, month, day] = parts(iso)
   return (new Date(Date.UTC(year, month - 1, day)).getUTCDay() + 6) % 7
 }
+
+/** Instante da API no fuso da usuária: "2026-10-15T06:00:00Z" → "15/10 às 03:00". */
+export function dayAndTime(instant: string, timeZone: string): string {
+  const fields = Object.fromEntries(
+    new Intl.DateTimeFormat('pt-BR', {
+      timeZone,
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    })
+      .formatToParts(new Date(instant))
+      .map((part) => [part.type, part.value]),
+  )
+  return `${fields.day}/${fields.month} às ${fields.hour}:${fields.minute}`
+}

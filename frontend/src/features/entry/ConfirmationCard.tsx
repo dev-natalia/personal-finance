@@ -20,9 +20,12 @@ import {
 } from './cardState'
 import { type Names, type SavedEntry, describeSaved } from './describe'
 import { ItemEditor } from './ItemEditor'
+import { changeReasons, pendingReasons, recordMisread } from './misread'
 
 interface Props {
   parsed: ParsedItem[]
+  /** A frase como foi digitada (guardada se o interpretador não a entendeu de primeira). */
+  text: string
   hints: EntryHintsOut
   /** `unsaved`: índices dos itens ainda não gravados (a tela guarda o texto deles). */
   onSaved: (entries: SavedEntry[], unsaved: number[]) => void
@@ -37,8 +40,10 @@ function unsavedOf(items: CardItem[], savedNow: Set<number>): number[] {
 }
 
 /** Comprovante de confirmação: nada é gravado sem o toque em "Confirmar". */
-export function ConfirmationCard({ parsed, hints, onSaved, onClose }: Props) {
+export function ConfirmationCard({ parsed, text, hints, onSaved, onClose }: Props) {
   const [items, dispatch] = useReducer(cardReducer, parsed, initCard)
+  // O comprovante como abriu: base para saber o que a usuária teve de corrigir.
+  const initialItems = useRef(items)
   const [busy, setBusy] = useState(false)
   const categories = useCategories()
   const invalidateLedger = useInvalidateLedger()
@@ -67,6 +72,9 @@ export function ConfirmationCard({ parsed, hints, onSaved, onClose }: Props) {
   )
 
   useEffect(() => headingRef.current?.focus(), [])
+
+  // O que o interpretador deixou pendente conta mesmo que o comprovante seja fechado depois.
+  useEffect(() => recordMisread(text, pendingReasons(parsed)), []) // só ao abrir
 
   // Aviso de possível duplicata, consultado uma vez ao abrir (não bloqueia nada se falhar).
   useEffect(() => {
@@ -101,6 +109,7 @@ export function ConfirmationCard({ parsed, hints, onSaved, onClose }: Props) {
   async function confirm() {
     if (busy) return
     setBusy(true)
+    recordMisread(text, changeReasons(parsed, initialItems.current, items))
     const saved: SavedEntry[] = []
     const savedNow = new Set<number>()
     let failures = 0

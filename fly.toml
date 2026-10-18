@@ -1,0 +1,39 @@
+# Publicação no Fly.io (ver README, "Publicação"). O nome do app é confirmado ao criá-lo;
+# se mudar, APP_ORIGIN muda junto.
+app = "caderno-de-gastos"
+primary_region = "gru"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  # Migrações numa máquina temporária com a imagem nova, antes de tocar na do app: se
+  # falharem, o deploy para e a versão anterior continua no ar. (O start.sh também roda
+  # `alembic upgrade head`, que aí não tem nada a fazer; ele fica para o docker compose.)
+  release_command = "alembic upgrade head"
+
+[env]
+  APP_ORIGIN = "https://caderno-de-gastos.fly.dev"
+  COOKIE_SECURE = "true"
+  # O IP real vem do cabeçalho do proxy do Fly; X-Forwarded-For não é confiado
+  # (FORWARDED_ALLOW_IPS fica no padrão da imagem, 127.0.0.1).
+  CLIENT_IP_HEADER = "Fly-Client-IP"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # Sempre ligada: só o banco (Neon) "dorme"; o app responde sem esperar subir.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "15s"
+    method = "GET"
+    path = "/api/v1/health"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

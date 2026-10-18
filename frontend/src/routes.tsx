@@ -11,6 +11,7 @@ import { CategoriesPage } from './features/categories/CategoriesPage'
 import { FullFormPage } from './features/form/FullFormPage'
 import { HomePage } from './features/home/HomePage'
 import { AppShell } from './features/shell/AppShell'
+import { MisreadPhrasesPage } from './features/shell/MisreadPhrasesPage'
 import { MorePage } from './features/shell/MorePage'
 import { TransactionsPage } from './features/transactions/TransactionsPage'
 
@@ -35,6 +36,7 @@ export function AppRoutes() {
         <Route path="cartoes/:id" element={<CardPage />} />
         <Route path="mais" element={<MorePage />} />
         <Route path="mais/categorias" element={<CategoriesPage />} />
+        <Route path="mais/frases" element={<MisreadPhrasesPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
