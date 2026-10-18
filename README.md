@@ -171,7 +171,7 @@ Nenhum segredo vai na linha de comando: o `fly secrets import` lê `NOME=valor` 
 
 ### 3. Armazenamento do backup (R2)
 
-1. Crie o bucket `financas-backup`.
+1. Crie o bucket `caderno-de-gastos-backup`.
 2. Em Settings → Object lifecycle rules: apagar objetos com prefixo `daily/` depois de 30 dias e com prefixo `monthly/` depois de 365 dias.
 3. Em "Manage API tokens", crie um token **Object Read & Write** só para esse bucket. Guarde o Access Key ID, o Secret Access Key e o endpoint `https://<id da conta>.r2.cloudflarestorage.com`.
 
@@ -207,8 +207,10 @@ fly tokens create deploy -a caderno-de-gastos | gh secret set FLY_API_TOKEN
 
 ```bash
 fly ssh console -a caderno-de-gastos
-python -m app.cli create-user --email voce@example.com   # dentro da máquina; a senha é pedida sem aparecer
+.venv/bin/python -m app.cli create-user --email voce@example.com   # dentro da máquina; a senha é pedida sem aparecer
 ```
+
+O terminal do `fly ssh console` não carrega o ambiente da imagem: use `.venv/bin/python` (em `/app/backend`), não `python`. No Windows, rode no PowerShell; no Git Bash o pedido de senha não funciona direito.
 
 ### 7. Backup diário
 
