@@ -13,20 +13,25 @@ export function BalanceHeader() {
       <p className="tabular text-[34px] leading-tight font-[650] tracking-tight">
         {balances.data ? formatBRL(balances.data.total) : '…'}
       </p>
-      {/* Fatura não é saldo: fica abaixo, separada, e leva à tela do cartão. */}
+      {/* Fatura e limite não são saldo: ficam abaixo, separados, e levam à tela do cartão. */}
       {(cards.data ?? []).length > 0 && (
-        <ul aria-label="Faturas abertas" className="mt-3 border-t border-rule pt-1">
-          {(cards.data ?? []).map(({ card, open_invoice: open }) => (
-            <li key={card.id}>
+        <ul aria-label="Cartões" className="mt-3 border-t border-rule pt-1">
+          {(cards.data ?? []).flatMap(({ card, open_invoice: open, limit }) => [
+            ['Fatura aberta', open.total, 'invoice'],
+            ['Limite livre', limit.available, 'limit'],
+          ].map(([label, amount, kind]) => (
+            <li key={`${card.id}-${kind}`}>
               <Link
                 to={`/cartoes/${card.id}`}
-                className="flex min-h-11 items-center justify-between gap-3 text-sm hover:text-pen"
+                className="flex min-h-10 items-center justify-between gap-3 text-sm hover:text-pen"
               >
-                <span className="text-ink-soft">Fatura aberta {card.name}</span>{' '}
-                <span className="tabular">{formatBRL(open.total)}</span>
+                <span className="text-ink-soft">
+                  {label} {card.name}
+                </span>{' '}
+                <span className="tabular">{formatBRL(amount!)}</span>
               </Link>
             </li>
-          ))}
+          )))}
         </ul>
       )}
     </header>

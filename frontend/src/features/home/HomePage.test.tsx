@@ -64,7 +64,7 @@ function mockHome(
   return session
 }
 
-test('shows balance and groups the timeline by day', async () => {
+test('home shows no ledger list', async () => {
   mockHome([
     transaction(),
     transaction({
@@ -78,17 +78,43 @@ test('shows balance and groups the timeline by day', async () => {
   ])
   renderWithProviders(<AppRoutes />, { route: '/' })
   expect(await screen.findByText('R$ 1.008,00')).toBeInTheDocument()
-  expect(await screen.findByRole('heading', { name: 'Hoje' })).toBeInTheDocument()
-  expect(screen.getByRole('heading', { name: 'Ontem' })).toBeInTheDocument()
-  expect(screen.getByText('−42,00')).toBeInTheDocument()
-  expect(screen.getByText('Mercado, Pix Itaú')).toBeInTheDocument()
-  expect(screen.getByText('Transporte, Débito Nubank')).toBeInTheDocument()
+  await screen.findByLabelText('Novo lançamento')
+  // Ver o que já foi lançado fica para Lançamentos.
+  expect(screen.queryByRole('heading', { name: 'Hoje' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Ontem' })).not.toBeInTheDocument()
+  expect(screen.queryByText('uber')).not.toBeInTheDocument()
+  expect(screen.queryByText('Mercado, Pix Itaú')).not.toBeInTheDocument()
 })
 
-test('empty timeline invites the first entry', async () => {
+test('empty home asks what you bought', async () => {
+  mockHome()
+  server.use(
+    http.post('/api/v1/transactions', () =>
+      HttpResponse.json({ transaction: transaction(), replayed: false, warnings: [] }, { status: 201 }),
+    ),
+  )
+  renderWithProviders(<AppRoutes />, { route: '/' })
+  const user = userEvent.setup()
+  expect(await screen.findByText('O que você comprou?')).toBeInTheDocument()
+  await user.type(await screen.findByLabelText('Novo lançamento'), '42 mercado pix itaú{Enter}')
+  // Com o comprovante aberto, a frase sai do caminho.
+  await screen.findByRole('heading', { name: 'Confirmar lançamento' })
+  expect(screen.queryByText('O que você comprou?')).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Confirmar' }))
+  expect(
+    await within(screen.getByTestId('session-entries')).findByText(/^Despesa registrada: R\$ 42,00/),
+  ).toBeInTheDocument()
+  expect(screen.queryByText('O que você comprou?')).not.toBeInTheDocument()
+})
+
+test('full form is a button below the field', async () => {
   mockHome()
   renderWithProviders(<AppRoutes />, { route: '/' })
-  expect(await screen.findByText(/Anote seu primeiro gasto/)).toBeInTheDocument()
+  const link = await screen.findByRole('link', { name: 'Formulário completo' })
+  expect(link).toHaveAttribute('href', '/lancamentos/novo')
+  // Botão (fundo e borda), não mais um texto sublinhado.
+  expect(link.className).toContain('rounded-lg')
+  expect(link.className).not.toContain('underline')
 })
 
 test('typing a phrase opens the confirmation card', async () => {
@@ -270,7 +296,7 @@ test('offline shows the banner and keeps the text', async () => {
 test('home has no accessibility violations', async () => {
   mockHome([transaction()])
   const { container } = renderWithProviders(<AppRoutes />, { route: '/' })
-  await screen.findByRole('heading', { name: 'Hoje' })
+  await screen.findByRole('link', { name: 'Limite livre Nubank R$ 1.560,00' })
   await expectNoA11yViolations(container)
 })
 
@@ -309,62 +335,15 @@ test('full form returns home with the confirmation line', async () => {
   expect(screen.getByRole('heading', { name: 'Início' })).toBeInTheDocument()
 })
 
-test('home shows open invoice line per card', async () => {
+test('home shows open invoice and free limit per card', async () => {
   mockHome()
   renderWithProviders(<AppRoutes />, { route: '/' })
-  const line = await screen.findByRole('link', { name: 'Fatura aberta Nubank R$ 1.240,00' })
-  expect(line).toHaveAttribute('href', `/cartoes/${CARDS.nubank.id}`)
+  const invoice = await screen.findByRole('link', { name: 'Fatura aberta Nubank R$ 1.240,00' })
+  expect(invoice).toHaveAttribute('href', `/cartoes/${CARDS.nubank.id}`)
+  const limit = screen.getByRole('link', { name: 'Limite livre Nubank R$ 1.560,00' })
+  expect(limit).toHaveAttribute('href', `/cartoes/${CARDS.nubank.id}`)
 })
 
-test('ledger detail describes card purchases and invoice payments', async () => {
-  mockHome([
-    transaction({
-      description: 'celular',
-      amount: '1200.00',
-      account_id: null,
-      payment_method: null,
-      card_id: CARDS.nubank.id,
-      installments: 6,
-    }),
-    transaction({
-      description: 'notebook',
-      amount: '6000.00',
-      category_id: null,
-      account_id: null,
-      payment_method: null,
-      card_id: CARDS.nubank.id,
-      installments: 10,
-      remaining_installments: 5,
-    }),
-    transaction({
-      type: 'INVOICE_PAYMENT',
-      description: 'Pagamento da fatura de outubro (Nubank)',
-      amount: '2300.00',
-      category_id: null,
-      merchant_id: null,
-      payment_method: null,
-      invoice_id: 'inv-outubro',
-      payment_group_id: 'grupo-1',
-    }),
-    transaction({
-      type: 'CHARGE',
-      description: 'IOF',
-      amount: '15.00',
-      category_id: null,
-      merchant_id: null,
-      account_id: null,
-      payment_method: null,
-      card_id: CARDS.nubank.id,
-    }),
-  ])
-  renderWithProviders(<AppRoutes />, { route: '/' })
-  expect(await screen.findByText('Mercado, crédito Nubank em 6x')).toBeInTheDocument()
-  expect(screen.getByText('A classificar, crédito Nubank em 10x, já em andamento')).toBeInTheDocument()
-  expect(screen.getByText('Pagamento de fatura, Itaú')).toBeInTheDocument()
-  expect(screen.getByText('−2.300,00')).toBeInTheDocument()
-  expect(screen.getByText('Encargos financeiros, Nubank')).toBeInTheDocument()
-  expect(screen.getByText('−15,00')).toBeInTheDocument()
-})
 
 test('navigation has six tabs', async () => {
   mockHome()

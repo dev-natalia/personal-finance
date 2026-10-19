@@ -1,5 +1,5 @@
 import { useAccounts, useAllCategories, useCards } from '../../api/queries'
-import type { LedgerNames } from '../home/Timeline'
+import type { LedgerNames } from '../transactions/ledger'
 
 /** Nomes para o livro-caixa, inclusive de contas, cartões e categorias arquivados. */
 export function useLedgerNames(): LedgerNames {

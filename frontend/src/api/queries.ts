@@ -98,11 +98,6 @@ export function useTransactions(params: Omit<TransactionQuery, 'cursor'>) {
   })
 }
 
-export function useRecentTransactions() {
-  const params = { limit: 30 }
-  return useQuery({ queryKey: queryKeys.transactions(params), queryFn: () => api.transactions(params) })
-}
-
 /**
  * Depois de gravar algo, saldos, lançamentos, atalhos de pagamento e tudo de cartão (faturas,
  * limite, prévias) precisam ser recarregados.

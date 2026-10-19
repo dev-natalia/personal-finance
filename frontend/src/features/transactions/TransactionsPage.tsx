@@ -26,7 +26,7 @@ import {
   secondaryButtonClass,
 } from '../../ui/styles'
 import { TransactionForm } from '../form/TransactionForm'
-import { LedgerAmount, type LedgerNames, ledgerDetail } from '../home/Timeline'
+import { LedgerAmount, type LedgerNames, ledgerDetail } from './ledger'
 import { RefundDialog } from './RefundDialog'
 
 type Filter = 'date_from' | 'date_to' | 'account_id' | 'card_id' | 'category_id' | 'type' | 'status'

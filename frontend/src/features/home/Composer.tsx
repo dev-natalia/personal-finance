@@ -1,7 +1,7 @@
 import { type FormEvent, type KeyboardEvent, type Ref } from 'react'
 import { Link } from 'react-router'
 
-import { linkClass } from '../../ui/styles'
+import { quietButtonClass } from '../../ui/styles'
 
 interface Props {
   value: string
@@ -49,7 +49,7 @@ export function Composer({ value, onChange, onSubmit, disabled, inputRef }: Prop
           Enviar
         </button>
       </div>
-      <Link to="/lancamentos/novo" className={`${linkClass} mt-1 inline-flex min-h-11 items-center text-sm`}>
+      <Link to="/lancamentos/novo" className={`${quietButtonClass} mt-2 mb-2 w-full text-sm`}>
         Formulário completo
       </Link>
     </form>

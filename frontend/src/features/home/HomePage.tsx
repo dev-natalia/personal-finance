@@ -12,7 +12,7 @@ import { recordMisread } from '../entry/misread'
 import { BalanceHeader } from './BalanceHeader'
 import { Composer } from './Composer'
 import { loadDraft, saveDraft } from './draft'
-import { Timeline } from './Timeline'
+import { SessionEntries } from './SessionEntries'
 
 interface OpenCard {
   id: number
@@ -91,11 +91,6 @@ export function HomePage() {
     persist(textRef.current)
   }
 
-  const names = {
-    accounts: new Map((hints.data?.accounts ?? []).map((a) => [a.id, a.name])),
-    cards: new Map((hints.data?.cards ?? []).map((c) => [c.id, c.name])),
-  }
-
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-2xl flex-col px-4 md:min-h-dvh">
       <h1 className="sr-only">Início</h1>
@@ -110,10 +105,11 @@ export function HomePage() {
           </Link>
         </p>
       )}
-      <div className="flex-1">
-        {hints.data && (
-          <Timeline today={hints.data.today} names={names} sessionEntries={entries} />
+      <div className="flex flex-1 flex-col justify-end pb-2">
+        {entries.length === 0 && !card && (
+          <p className="m-auto py-8 text-center text-ink-soft">O que você comprou?</p>
         )}
+        <SessionEntries entries={entries} />
       </div>
       {card && hints.data && (
         <ConfirmationCard
