@@ -1,14 +1,14 @@
 import { useId, useState } from 'react'
 import { useLocation } from 'react-router'
 
-import { useAccounts, useAnalysisSummary, useCards, useEntryHints } from '../../api/queries'
+import { useAnalysisSummary, useEntryHints } from '../../api/queries'
 import type { AnalysisSummaryOut, PeriodOut } from '../../api/types'
 import { addDays, monthName, shortDate } from '../../domain/dates'
-import { PAYMENT_METHOD_LABELS } from '../../domain/labels'
 import { formatBRL } from '../../domain/money'
 import { Field } from '../../ui/Field'
 import { Page } from '../../ui/Page'
-import { chipClass, errorTextClass, inputClass, secondaryButtonClass, slipClass } from '../../ui/styles'
+import { errorTextClass, inputClass, secondaryButtonClass, slipClass } from '../../ui/styles'
+import { SourceSelect, type SourceKind } from '../filters/SourceSelect'
 import { DayDetails } from './DayDetails'
 import { PlaceRanking } from './PlaceRanking'
 import { SpendingCalendar } from './SpendingCalendar'
@@ -16,8 +16,8 @@ import { SpendingDonut } from './SpendingDonut'
 import { type PeriodKind, useAnalysisParams } from './useAnalysisParams'
 
 const PERIOD_LABELS: [PeriodKind, string][] = [
-  ['month', 'Mês'],
   ['week', 'Semana'],
+  ['month', 'Mês'],
   ['year', 'Ano'],
 ]
 
@@ -128,70 +128,50 @@ export function AnalysisPage() {
 function Controls({ sources }: { sources: string[] }) {
   const id = useId()
   const params = useAnalysisParams()
-  const accounts = useAccounts(true)
-  const cards = useCards(true)
-  const listed = (kind: 'account' | 'card', item: { id: string; archived_at: string | null }) => {
+  const listed = (kind: SourceKind, item: { id: string; archived_at: string | null }) => {
     const value = `${kind}:${item.id}`
     return item.archived_at === null || sources.includes(value) || params.source === value
   }
   return (
-    <div className="flex flex-col gap-3">
-      <div role="group" aria-label="Período" className="flex flex-wrap gap-2">
-        {PERIOD_LABELS.map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            aria-pressed={params.period === value}
-            onClick={() => params.set({ period: value, date: null })}
-            className={chipClass}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      <div role="group" aria-label="Como contar compras parceladas" className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          aria-pressed={params.mode === 'installments'}
-          onClick={() => params.set({ mode: 'installments' })}
-          className={chipClass}
-        >
-          Pelas parcelas
-        </button>
-        <button
-          type="button"
-          aria-pressed={params.mode === 'purchase'}
-          onClick={() => params.set({ mode: 'purchase' })}
-          className={chipClass}
-        >
-          Pela compra
-        </button>
-      </div>
-      <Field id={`${id}-source`} label="Cartão ou conta">
+    <div
+      role="group"
+      aria-label="Filtros da análise"
+      // As opções são frases longas: uma lista por linha no celular, lado a lado no computador.
+      className="grid grid-cols-1 gap-3 rounded-xl border border-rule bg-slip p-3 shadow-[0_2px_8px_rgba(27,35,64,0.06)] md:grid-cols-3"
+    >
+      <Field id={`${id}-period`} label="Período">
         <select
-          id={`${id}-source`}
-          value={params.source ?? ''}
-          onChange={(e) => params.set({ source: e.target.value || null })}
-          className={`${inputClass} max-w-xs`}
+          id={`${id}-period`}
+          value={params.period}
+          onChange={(e) => params.set({ period: e.target.value as PeriodKind, date: null })}
+          className={inputClass}
         >
-          <option value="">Todos</option>
-          <optgroup label="Contas">
-            {(accounts.data ?? []).filter((a) => listed('account', a)).map((a) => (
-              <option key={a.id} value={`account:${a.id}`}>
-                {a.archived_at ? `${a.name} (arquivada)` : a.name}
-              </option>
-            ))}
-          </optgroup>
-          <optgroup label="Cartões">
-            {(cards.data ?? []).filter((c) => listed('card', c)).map((c) => (
-              <option key={c.id} value={`card:${c.id}`}>
-                {PAYMENT_METHOD_LABELS.CREDIT} {c.name}
-                {c.archived_at ? ' (arquivado)' : ''}
-              </option>
-            ))}
-          </optgroup>
+          {PERIOD_LABELS.map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
         </select>
       </Field>
+      <Field id={`${id}-mode`} label="Compras parceladas">
+        <select
+          id={`${id}-mode`}
+          value={params.mode}
+          onChange={(e) => params.set({ mode: e.target.value as 'installments' | 'purchase' })}
+          className={inputClass}
+        >
+          <option value="installments">Uma parcela por mês</option>
+          <option value="purchase">Valor total no dia da compra</option>
+        </select>
+      </Field>
+      <div>
+        <SourceSelect
+          id={`${id}-source`}
+          value={params.source ?? ''}
+          onChange={(value) => params.set({ source: value || null })}
+          include={listed}
+        />
+      </div>
     </div>
   )
 }

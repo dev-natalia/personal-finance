@@ -102,8 +102,8 @@ test('analysis tab opens current month', async () => {
   expect(await screen.findByRole('heading', { name: 'Análise' })).toBeInTheDocument()
   expect(await screen.findByText('Gasto em outubro')).toBeInTheDocument()
   expect(screen.getByText('R$ 270,50')).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: 'Mês' })).toHaveAttribute('aria-pressed', 'true')
-  expect(screen.getByRole('button', { name: 'Pelas parcelas' })).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByLabelText('Período')).toHaveValue('month')
+  expect(screen.getByLabelText('Compras parceladas')).toHaveValue('installments')
   expect(screen.queryByRole('button', { name: /›$/ })).not.toBeInTheDocument()
   expect(last(queries).get('period')).toBe('month')
   expect(last(queries).get('mode')).toBe('installments')
@@ -130,25 +130,53 @@ test('period chips and arrows update the url', async () => {
   expect(await screen.findByText('Gasto em setembro')).toBeInTheDocument()
   expect(screen.getByTestId('search')).toHaveTextContent('date=2026-09-30')
   expect(screen.getByRole('button', { name: 'outubro ›' })).toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: 'Semana' }))
+  await user.selectOptions(screen.getByLabelText('Período'), 'Semana')
   await waitFor(() => expect(last(queries).get('period')).toBe('week'))
   expect(await screen.findByText('Gasto de 12/10 a 18/10')).toBeInTheDocument()
   expect(screen.getByTestId('search')).not.toHaveTextContent('date=')
 })
 
+test('period and installment mode are dropdowns', async () => {
+  mockApi()
+  renderPage()
+  const period = await screen.findByLabelText('Período')
+  expect(within(period).getAllByRole('option').map((o) => o.textContent)).toEqual([
+    'Semana',
+    'Mês',
+    'Ano',
+  ])
+  expect(period).toHaveValue('month')
+  const mode = screen.getByLabelText('Compras parceladas')
+  expect(within(mode).getAllByRole('option').map((o) => o.textContent)).toEqual([
+    'Uma parcela por mês',
+    'Valor total no dia da compra',
+  ])
+  // Não há mais os botões de antes.
+  expect(screen.queryByRole('button', { name: 'Mês' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Pela compra' })).not.toBeInTheDocument()
+})
+
+test('analysis filters sit in a highlighted block', async () => {
+  mockApi()
+  renderPage()
+  const filters = await screen.findByRole('group', { name: 'Filtros da análise' })
+  expect(filters.className).toContain('bg-slip')
+  expect(within(filters).getByLabelText('Conta ou cartão')).toBeInTheDocument()
+})
+
 test('mode toggle sends purchase mode', async () => {
   const queries = mockApi()
   const { user } = renderPage()
-  await user.click(await screen.findByRole('button', { name: 'Pela compra' }))
+  await user.selectOptions(await screen.findByLabelText('Compras parceladas'), 'Valor total no dia da compra')
   await waitFor(() => expect(last(queries).get('mode')).toBe('purchase'))
-  expect(screen.getByRole('button', { name: 'Pela compra' })).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByLabelText('Compras parceladas')).toHaveValue('purchase')
   expect(screen.getByTestId('search')).toHaveTextContent('mode=purchase')
 })
 
 test('source filter sends card', async () => {
   const queries = mockApi()
   const { user } = renderPage()
-  const select = await screen.findByLabelText('Cartão ou conta')
+  const select = await screen.findByLabelText('Conta ou cartão')
   await within(select).findByRole('option', { name: 'Crédito Nubank' })
   await user.selectOptions(select, 'Crédito Nubank')
   await waitFor(() => expect(last(queries).get('source')).toBe('card:card-nubank'))
@@ -157,7 +185,7 @@ test('source filter sends card', async () => {
 test('archived sources still listed in the filter', async () => {
   mockApi(() => ({ ...ANALYSIS_SUMMARY, sources: ['account:acc-carteira', 'card:card-inter'] }))
   renderPage()
-  const select = await screen.findByLabelText('Cartão ou conta')
+  const select = await screen.findByLabelText('Conta ou cartão')
   expect(await within(select).findByRole('option', { name: 'Carteira (arquivada)' })).toBeInTheDocument()
   expect(within(select).getByRole('option', { name: 'Crédito Inter (arquivado)' })).toBeInTheDocument()
 })
@@ -165,7 +193,7 @@ test('archived sources still listed in the filter', async () => {
 test('archived sources without spending are not listed', async () => {
   mockApi()
   renderPage()
-  const select = await screen.findByLabelText('Cartão ou conta')
+  const select = await screen.findByLabelText('Conta ou cartão')
   await within(select).findByRole('option', { name: 'Crédito Nubank' })
   expect(within(select).queryByRole('option', { name: 'Carteira (arquivada)' })).not.toBeInTheDocument()
   expect(within(select).queryByRole('option', { name: 'Crédito Inter (arquivado)' })).not.toBeInTheDocument()
