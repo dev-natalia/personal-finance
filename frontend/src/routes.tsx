@@ -6,6 +6,8 @@ import { PlacePage } from './features/analysis/PlacePage'
 import { LoginPage } from './features/auth/LoginPage'
 import { RequireAuth } from './features/auth/RequireAuth'
 import { CardPage } from './features/cards/CardPage'
+import { CardsPage } from './features/cards/CardsPage'
+import { NewCardPage } from './features/cards/NewCardPage'
 import { useUnauthenticatedRedirect } from './features/auth/useUnauthenticatedRedirect'
 import { CategoriesPage } from './features/categories/CategoriesPage'
 import { FullFormPage } from './features/form/FullFormPage'
@@ -33,6 +35,8 @@ export function AppRoutes() {
         <Route path="analise" element={<AnalysisPage />} />
         <Route path="analise/lugar/:key" element={<PlacePage />} />
         <Route path="contas" element={<AccountsPage />} />
+        <Route path="cartoes" element={<CardsPage />} />
+        <Route path="cartoes/novo" element={<NewCardPage />} />
         <Route path="cartoes/:id" element={<CardPage />} />
         <Route path="mais" element={<MorePage />} />
         <Route path="mais/categorias" element={<CategoriesPage />} />

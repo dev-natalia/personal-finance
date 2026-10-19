@@ -366,11 +366,26 @@ test('ledger detail describes card purchases and invoice payments', async () => 
   expect(screen.getByText('−15,00')).toBeInTheDocument()
 })
 
-test('navigation has the analysis tab', async () => {
+test('navigation has six tabs', async () => {
   mockHome()
   renderWithProviders(<AppRoutes />, { route: '/' })
   const nav = await screen.findByRole('navigation', { name: 'Principal' })
+  // Rótulos do celular (no computador os nomes aparecem completos).
+  const mobileLabels = within(nav)
+    .getAllByRole('link')
+    .map((l) => l.querySelector('[data-mobile-label]')?.textContent)
+  expect(mobileLabels).toEqual([
+    'Início',
+    'Lançam.',
+    'Análise',
+    'Contas',
+    'Cartões',
+    'Mais',
+  ])
+  // Abreviado só na barra: o nome acessível continua completo.
+  expect(within(nav).getByRole('link', { name: 'Lançamentos' })).toHaveAttribute('href', '/lancamentos')
   expect(within(nav).getByRole('link', { name: 'Análise' })).toHaveAttribute('href', '/analise')
+  expect(within(nav).getByRole('link', { name: 'Cartões' })).toHaveAttribute('href', '/cartoes')
 })
 
 test('phrase with nothing understood shows a hint and is recorded', async () => {

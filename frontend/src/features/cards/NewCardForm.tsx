@@ -213,7 +213,6 @@ export function NewCardForm({ onCreated, onCancel }: Props) {
   const created = cardId !== null
   return (
     <form aria-label="Novo cartão" onSubmit={submit} noValidate className="flex flex-col gap-3">
-      <h3 className="text-lg font-[650]">Novo cartão</h3>
       <fieldset disabled={created} className="flex flex-col gap-3">
         <legend className="sr-only">Cartão</legend>
         <Field id={`${id}-name`} label="Nome do cartão" error={errors.name}>

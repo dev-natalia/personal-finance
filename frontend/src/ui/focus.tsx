@@ -1,4 +1,5 @@
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router'
 
 /**
  * Quando um formulário aberto dentro da linha fecha (`mode` volta a "view"), devolve o foco
@@ -73,4 +74,16 @@ export function useStatus(): { announce: Announce; status: ReactNode } {
     </div>
   )
   return { announce, status }
+}
+
+/** Mensagem deixada por outra tela ao voltar para cá (ex.: cartão arquivado, com aviso). */
+export function useMessageFromNavigation(announce: Announce): void {
+  const location = useLocation()
+  const message = (location.state as { message?: unknown } | null)?.message
+  const shown = useRef(false)
+  useEffect(() => {
+    if (shown.current || typeof message !== 'string') return
+    shown.current = true
+    announce(message, { focus: true })
+  }, [announce, message])
 }

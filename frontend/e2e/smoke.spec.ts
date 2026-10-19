@@ -62,7 +62,8 @@ test('card: opening, installment purchase and payment', async ({ page }) => {
   await account.getByRole('button', { name: 'Criar conta' }).click()
   await expect(page.getByRole('status')).toHaveText('Conta Bradesco criada.')
 
-  await page.getByRole('button', { name: 'Adicionar cartão' }).click()
+  await page.getByRole('link', { name: 'Cartões' }).click()
+  await page.getByRole('link', { name: '+ Adicionar cartão' }).click()
   await page.getByLabel('Nome do cartão').fill('Nubank')
   await page.getByLabel('Limite').fill('11.000')
   await page.getByLabel('Fecha no dia').selectOption('3')

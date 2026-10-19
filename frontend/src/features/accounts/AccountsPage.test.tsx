@@ -69,6 +69,14 @@ async function fillNewAccount(user: ReturnType<typeof userEvent.setup>, name: st
   await user.click(within(form).getByRole('button', { name: 'Criar conta' }))
 }
 
+test('accounts page has no cards section', async () => {
+  mockAccounts()
+  renderPage()
+  await screen.findByText('Itaú')
+  expect(screen.queryByRole('region', { name: 'Cartões' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /Adicionar cartão/ })).not.toBeInTheDocument()
+})
+
 test('lists accounts with formatted balances', async () => {
   mockAccounts()
   renderPage()
@@ -165,40 +173,6 @@ test('focus returns to the row after editing and to the message after archiving'
   await waitFor(() => expect(screen.getByRole('status')).toHaveFocus())
 })
 
-
-test('accounts page lists cards with open invoice and available limit', async () => {
-  mockAccounts()
-  const { user } = renderPage()
-  expect(await screen.findByRole('heading', { name: 'Contas e cartões' })).toBeInTheDocument()
-  const section = await screen.findByRole('region', { name: 'Cartões' })
-  const link = await within(section).findByRole('link', { name: /Nubank/ })
-  expect(link).toHaveAttribute('href', '/cartoes/card-nubank')
-  expect(within(section).getByText('Fatura aberta R$ 1.240,00')).toBeInTheDocument()
-  expect(within(section).getByText('Limite disponível R$ 1.560,00')).toBeInTheDocument()
-  expect(within(section).queryByRole('form', { name: 'Novo cartão' })).not.toBeInTheDocument()
-  await user.click(within(section).getByRole('button', { name: 'Adicionar cartão' }))
-  expect(within(section).getByRole('form', { name: 'Novo cartão' })).toBeInTheDocument()
-})
-
-test('shows the message left by the card page after archiving', async () => {
-  mockAccounts()
-  renderWithProviders(<AccountsPage />, {
-    route: { pathname: '/contas', state: { message: 'Cartão Nubank arquivado.' } },
-  })
-  expect(await screen.findByRole('status')).toHaveTextContent('Cartão Nubank arquivado.')
-})
-
-test('new card form takes the focus and gives it back on cancel', async () => {
-  mockAccounts()
-  const user = userEvent.setup()
-  renderWithProviders(<AccountsPage />, { route: '/contas' })
-  await user.click(await screen.findByRole('button', { name: 'Adicionar cartão' }))
-  expect(screen.getByLabelText('Nome do cartão')).toHaveFocus()
-  await user.click(screen.getByRole('button', { name: 'Cancelar' }))
-  expect(screen.getByRole('button', { name: 'Adicionar cartão' })).toHaveFocus()
-})
-
-
 test('archived accounts leave the total and can be unarchived', async () => {
   mockAccounts()
   const unarchived: string[] = []
@@ -236,30 +210,3 @@ test('archived accounts leave the total and can be unarchived', async () => {
   expect(await screen.findByRole('status')).toHaveTextContent('Conta Antiga desarquivada.')
 })
 
-test('archived cards can be unarchived', async () => {
-  mockAccounts()
-  const unarchived: string[] = []
-  const inter = {
-    id: 'card-inter',
-    name: 'Inter',
-    credit_limit: '2000.00',
-    closing_day: 20,
-    due_day: 27,
-    opening_date: '2026-09-01',
-    archived_at: '2026-10-15T15:00:00Z',
-  }
-  server.use(
-    http.get('/api/v1/cards', () => HttpResponse.json([CARDS_SUMMARY[0]!.card, inter])),
-    http.post('/api/v1/cards/:id/unarchive', ({ params }) => {
-      unarchived.push(String(params.id))
-      return HttpResponse.json({ ...inter, archived_at: null })
-    }),
-  )
-  const user = userEvent.setup()
-  renderWithProviders(<AccountsPage />, { route: '/contas' })
-  await user.click(await screen.findByText('Cartões arquivados'))
-  const archived = await screen.findByRole('list', { name: 'Cartões arquivados' })
-  await user.click(await within(archived).findByRole('button', { name: 'Desarquivar Inter' }))
-  await waitFor(() => expect(unarchived).toEqual(['card-inter']))
-  expect(await screen.findByRole('status')).toHaveTextContent('Cartão Inter desarquivado.')
-})

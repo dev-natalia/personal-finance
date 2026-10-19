@@ -1,6 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { type FormEvent, useEffect, useId, useRef, useState } from 'react'
-import { useLocation } from 'react-router'
+import { type FormEvent, useId, useRef, useState } from 'react'
 
 import { ApiError, type FieldError } from '../../api/client'
 import { api } from '../../api/endpoints'
@@ -9,9 +8,8 @@ import type { AccountOut } from '../../api/types'
 import { firstDayOfMonth } from '../../domain/dates'
 import { ACCOUNT_TYPE_LABELS } from '../../domain/labels'
 import { formatBRL, tryParseSignedMoney } from '../../domain/money'
-import { type Announce, useFocusOnReturn, useStatus } from '../../ui/focus'
+import { type Announce, useFocusOnReturn, useMessageFromNavigation, useStatus } from '../../ui/focus'
 import { MoneyInput } from '../../ui/MoneyInput'
-import { CardsSection } from '../cards/CardsSection'
 import { ArchivedList, ArchivedSection } from './ArchivedList'
 import { Page } from '../../ui/Page'
 import {
@@ -87,21 +85,8 @@ export function AccountsPage() {
       <ArchivedSection title="Contas arquivadas">
         <ArchivedAccounts balanceOf={balanceOf} onMessage={announce} />
       </ArchivedSection>
-      <CardsSection onMessage={announce} />
     </Page>
   )
-}
-
-/** Mensagem deixada por outra tela ao voltar para cá (ex.: cartão arquivado, com aviso). */
-function useMessageFromNavigation(announce: Announce): void {
-  const location = useLocation()
-  const message = (location.state as { message?: unknown } | null)?.message
-  const shown = useRef(false)
-  useEffect(() => {
-    if (shown.current || typeof message !== 'string') return
-    shown.current = true
-    announce(message, { focus: true })
-  }, [announce, message])
 }
 
 function ArchivedAccounts({

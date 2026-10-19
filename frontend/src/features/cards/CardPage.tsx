@@ -62,8 +62,8 @@ export function CardPage() {
     return (
       <Page title="Cartão">
         <p className="mb-3">Cartão não encontrado. Ele pode ter sido arquivado.</p>
-        <Link to="/contas" className={linkClass}>
-          Ver contas e cartões
+        <Link to="/cartoes" className={linkClass}>
+          Ver cartões
         </Link>
       </Page>
     )
@@ -424,7 +424,7 @@ function CardFooter({ card, onMessage }: { card: CardOut; onMessage: Announce })
     try {
       const result = await api.archiveCard(card.id)
       const message = result.warnings[0]?.detail ?? `Cartão ${card.name} arquivado.`
-      await navigate('/contas', { state: { message } })
+      await navigate('/cartoes', { state: { message } })
       await invalidate()
     } catch (err) {
       setError(messageOf(err))

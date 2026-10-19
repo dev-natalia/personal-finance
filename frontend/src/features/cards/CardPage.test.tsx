@@ -225,7 +225,7 @@ test('edit and archive card', async () => {
   expect(captured.archived).toEqual([])
   await user.click(screen.getByRole('button', { name: 'Arquivar Nubank' }))
   await waitFor(() => expect(captured.archived).toEqual(['card-nubank']))
-  expect(await screen.findByTestId('location')).toHaveTextContent('/contas')
+  expect(await screen.findByTestId('location')).toHaveTextContent('/cartoes')
 })
 
 test('card page has no accessibility violations', async () => {
