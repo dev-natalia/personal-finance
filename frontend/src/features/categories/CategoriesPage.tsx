@@ -19,6 +19,8 @@ const KINDS: [CategoryKind, string][] = [
   ['EXPENSE', 'Despesas'],
   ['INCOME', 'Receitas'],
 ]
+const ESSENTIAL_NOTE =
+  'Essencial: gastos que o planejamento vai reservar primeiro (moradia, contas, saúde).'
 const textButton = 'min-h-11 px-2 text-sm text-pen underline-offset-2 hover:underline'
 const rowClass = 'flex flex-wrap items-center justify-between gap-x-3 border-b border-rule py-1'
 
@@ -43,6 +45,7 @@ export function CategoriesPage() {
       {KINDS.map(([kind, title]) => (
         <KindSection
           key={kind}
+          kind={kind}
           title={title}
           categories={(categories.data ?? []).filter((c) => c.kind === kind)}
           onMessage={announce}
@@ -54,10 +57,12 @@ export function CategoriesPage() {
 }
 
 function KindSection({
+  kind,
   title,
   categories,
   onMessage,
 }: {
+  kind: CategoryKind
   title: string
   categories: CategoryOut[]
   onMessage: Announce
@@ -68,9 +73,20 @@ function KindSection({
       <h2 id={id} className="mb-1 text-lg font-[650]">
         {title}
       </h2>
+      {/* Ainda sem efeito no app: o planejamento (próxima etapa) é que vai usar a marcação. */}
+      {kind === 'EXPENSE' && (
+        <p id={`${id}-essential`} className="mb-2 text-sm text-ink-soft">
+          {ESSENTIAL_NOTE}
+        </p>
+      )}
       <ul>
         {categories.map((category) => (
-          <CategoryRow key={category.id} category={category} onMessage={onMessage} />
+          <CategoryRow
+            key={category.id}
+            category={category}
+            essentialNoteId={`${id}-essential`}
+            onMessage={onMessage}
+          />
         ))}
       </ul>
     </section>
@@ -79,9 +95,11 @@ function KindSection({
 
 function CategoryRow({
   category,
+  essentialNoteId,
   onMessage,
 }: {
   category: CategoryOut
+  essentialNoteId: string
   onMessage: Announce
 }) {
   const [mode, setMode] = useState<'view' | 'rename' | 'archive'>('view')
@@ -140,6 +158,7 @@ function CategoryRow({
             <input
               type="checkbox"
               aria-label={`Essencial (${category.name})`}
+              aria-describedby={essentialNoteId}
               checked={essential ?? category.is_essential}
               aria-busy={essential !== null}
               onChange={(e) => toggleEssential(e.target.checked)}
