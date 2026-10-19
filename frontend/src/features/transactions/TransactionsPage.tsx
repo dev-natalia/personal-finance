@@ -25,6 +25,7 @@ import {
   primaryButtonClass,
   secondaryButtonClass,
 } from '../../ui/styles'
+import { SourceSelect, sourceParams } from '../filters/SourceSelect'
 import { TransactionForm } from '../form/TransactionForm'
 import { LedgerAmount, type LedgerNames, ledgerDetail } from './ledger'
 import { RefundDialog } from './RefundDialog'
@@ -45,11 +46,18 @@ export function TransactionsPage() {
   const { announce, status } = useStatus()
 
   const filter = (name: Filter) => search.get(name) ?? ''
+  // "Conta ou cartão" fica em `source`; links antigos com account_id/card_id continuam valendo.
+  const source =
+    search.get('source') ??
+    (filter('account_id')
+      ? `account:${filter('account_id')}`
+      : filter('card_id')
+        ? `card:${filter('card_id')}`
+        : '')
   const params: Omit<TransactionQuery, 'cursor'> = {
     date_from: filter('date_from') || undefined,
     date_to: filter('date_to') || undefined,
-    account_id: filter('account_id') || undefined,
-    card_id: filter('card_id') || undefined,
+    ...sourceParams(source),
     category_id: filter('category_id') || undefined,
     type: (filter('type') || undefined) as TransactionQuery['type'],
     status: (filter('status') || undefined) as TransactionQuery['status'],
@@ -62,6 +70,20 @@ export function TransactionsPage() {
         const next = new URLSearchParams(previous)
         if (value) next.set(name, value)
         else next.delete(name)
+        return next
+      },
+      { replace: true },
+    )
+  }
+
+  function setSource(value: string) {
+    setSearch(
+      (previous) => {
+        const next = new URLSearchParams(previous)
+        next.delete('account_id')
+        next.delete('card_id')
+        if (value) next.set('source', value)
+        else next.delete('source')
         return next
       },
       { replace: true },
@@ -81,18 +103,8 @@ export function TransactionsPage() {
 
   return (
     <Page title="Lançamentos">
-      <Filters filter={filter} setFilter={setFilter}>
+      <Filters filter={filter} setFilter={setFilter} source={source} setSource={setSource}>
         {{
-          accounts: (accounts.data ?? []).map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.archived_at ? `${a.name} (arquivada)` : a.name}
-            </option>
-          )),
-          cards: (cards.data ?? []).map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.archived_at ? `${c.name} (arquivado)` : c.name}
-            </option>
-          )),
           categories: (
             <>
               <optgroup label="Despesas">
@@ -155,11 +167,15 @@ export function TransactionsPage() {
 function Filters({
   filter,
   setFilter,
+  source,
+  setSource,
   children,
 }: {
   filter: (name: Filter) => string
   setFilter: (name: Filter, value: string) => void
-  children: { accounts: ReactNode; cards: ReactNode; categories: ReactNode }
+  source: string
+  setSource: (value: string) => void
+  children: { categories: ReactNode }
 }) {
   const id = useId()
   const select = (name: Filter, label: string, options: ReactNode, all = 'Todas') => (
@@ -190,11 +206,16 @@ function Filters({
   )
 
   return (
-    <div role="group" aria-label="Filtros" className="mb-4 grid grid-cols-2 gap-3">
+    <div
+      role="group"
+      aria-label="Filtros"
+      className="mb-4 grid grid-cols-2 gap-3 rounded-xl border border-rule bg-slip p-3 shadow-[0_2px_8px_rgba(27,35,64,0.06)]"
+    >
       {date('date_from', 'De')}
       {date('date_to', 'Até')}
-      {select('account_id', 'Conta', children.accounts)}
-      {select('card_id', 'Cartão', children.cards, 'Todos')}
+      <div className="col-span-2">
+        <SourceSelect id={`${id}-source`} value={source} onChange={setSource} />
+      </div>
       {select('category_id', 'Categoria', children.categories)}
       {select(
         'type',

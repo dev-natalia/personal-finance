@@ -150,8 +150,12 @@ test('filters are kept in the URL', async () => {
   const { user } = renderPage('/lancamentos?type=EXPENSE')
   expect(await screen.findByLabelText('Tipo')).toHaveDisplayValue('Despesa')
   await waitFor(() => expect(lastQuery(captured).get('type')).toBe('EXPENSE'))
-  await user.selectOptions(await screen.findByLabelText('Conta'), 'Itaú')
-  expect(screen.getByTestId('search')).toHaveTextContent(`type=EXPENSE&account_id=${ACCOUNTS.itau.id}`)
+  const source = await screen.findByLabelText('Conta ou cartão')
+  await within(source).findByRole('option', { name: 'Itaú' })
+  await user.selectOptions(source, 'Itaú')
+  expect(screen.getByTestId('search')).toHaveTextContent(
+    `type=EXPENSE&source=account%3A${ACCOUNTS.itau.id}`,
+  )
   await waitFor(() => expect(lastQuery(captured).get('account_id')).toBe(ACCOUNTS.itau.id))
   expect(lastQuery(captured).get('status')).toBeNull()
 })
@@ -269,14 +273,44 @@ test('voiding moves focus to the result message', async () => {
   await waitFor(() => expect(status).toHaveFocus())
 })
 
-test('transactions filter by card', async () => {
+test('one filter for account or card', async () => {
   const captured = mockTransactions()
   const { user } = renderPage()
-  const card = await screen.findByLabelText('Cartão')
-  await within(card).findByRole('option', { name: 'Nubank' })
-  await user.selectOptions(card, 'Nubank')
+  const source = await screen.findByLabelText('Conta ou cartão')
+  // Não existem mais dois campos separados.
+  expect(screen.queryByLabelText('Conta')).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('Cartão')).not.toBeInTheDocument()
+  await within(source).findByRole('option', { name: 'Crédito Nubank' })
+  await user.selectOptions(source, 'Itaú')
+  await waitFor(() => expect(lastQuery(captured).get('account_id')).toBe(ACCOUNTS.itau.id))
+  expect(lastQuery(captured).get('card_id')).toBeNull()
+  await user.selectOptions(source, 'Crédito Nubank')
   await waitFor(() => expect(lastQuery(captured).get('card_id')).toBe(CARDS.nubank.id))
-  expect(screen.getByTestId('search')).toHaveTextContent(`card_id=${CARDS.nubank.id}`)
+  expect(lastQuery(captured).get('account_id')).toBeNull()
+  expect(screen.getByTestId('search')).toHaveTextContent(`source=card%3A${CARDS.nubank.id}`)
+  await user.selectOptions(source, 'Todos')
+  await waitFor(() => expect(lastQuery(captured).get('card_id')).toBeNull())
+  expect(screen.getByTestId('search')).not.toHaveTextContent('source')
+})
+
+test('old account_id and card_id links still filter', async () => {
+  const captured = mockTransactions()
+  const first = renderPage(`/lancamentos?card_id=${CARDS.nubank.id}`)
+  await waitFor(() => expect(lastQuery(captured).get('card_id')).toBe(CARDS.nubank.id))
+  const source = await screen.findByLabelText('Conta ou cartão')
+  await waitFor(() => expect(source).toHaveDisplayValue('Crédito Nubank'))
+  first.unmount()
+
+  renderPage(`/lancamentos?account_id=${ACCOUNTS.itau.id}`)
+  await waitFor(() => expect(lastQuery(captured).get('account_id')).toBe(ACCOUNTS.itau.id))
+  await waitFor(() => expect(screen.getByLabelText('Conta ou cartão')).toHaveDisplayValue('Itaú'))
+})
+
+test('filters sit in a highlighted block', async () => {
+  mockTransactions()
+  renderPage()
+  const filters = await screen.findByRole('group', { name: 'Filtros' })
+  expect(filters.className).toContain('bg-slip')
 })
 
 test('card refund has no account field', async () => {
