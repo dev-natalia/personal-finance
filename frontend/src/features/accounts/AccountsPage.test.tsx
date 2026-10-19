@@ -62,12 +62,63 @@ function renderPage() {
 }
 
 async function fillNewAccount(user: ReturnType<typeof userEvent.setup>, name: string, amount: string) {
-  const form = await screen.findByRole('form', { name: 'Nova conta' })
+  await user.click(await screen.findByRole('button', { name: '+ Adicionar conta' }))
+  const form = within(screen.getByRole('dialog', { name: 'Nova conta' })).getByRole('form', {
+    name: 'Nova conta',
+  })
   await user.type(within(form).getByLabelText('Nome'), name)
   await user.selectOptions(within(form).getByLabelText('Tipo'), 'Poupança')
   await user.type(within(form).getByLabelText('Saldo de abertura'), amount)
   await user.click(within(form).getByRole('button', { name: 'Criar conta' }))
 }
+
+test('page title is Contas', async () => {
+  mockAccounts()
+  renderPage()
+  expect(await screen.findByRole('heading', { level: 1, name: 'Contas' })).toBeInTheDocument()
+  // O formulário de nova conta não fica mais aberto no meio da página.
+  expect(screen.queryByRole('form', { name: 'Nova conta' })).not.toBeInTheDocument()
+})
+
+test('creates an account from the add sheet', async () => {
+  const captured = mockAccounts()
+  const { user } = renderPage()
+  await fillNewAccount(user, 'Reserva', '1.000,50')
+  await waitFor(() => expect(captured.created).toHaveLength(1))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(screen.getByRole('status')).toHaveTextContent('Conta Reserva criada.')
+  expect(screen.getByRole('button', { name: '+ Adicionar conta' })).toHaveFocus()
+})
+
+test('cancel closes the add sheet without creating', async () => {
+  const captured = mockAccounts()
+  const { user } = renderPage()
+  await user.click(await screen.findByRole('button', { name: '+ Adicionar conta' }))
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancelar' }))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(captured.created).toEqual([])
+  expect(screen.getByRole('button', { name: '+ Adicionar conta' })).toHaveFocus()
+})
+
+test('account options open in a sheet', async () => {
+  mockAccounts()
+  const { user } = renderPage()
+  await user.click(await screen.findByRole('button', { name: 'Opções de Itaú' }))
+  const dialog = screen.getByRole('dialog', { name: 'Itaú' })
+  expect(within(dialog).getByRole('button', { name: 'Editar' })).toBeInTheDocument()
+  expect(within(dialog).getByRole('button', { name: 'Arquivar' })).toBeInTheDocument()
+  await user.keyboard('{Escape}')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Opções de Itaú' })).toHaveFocus()
+})
+
+test('accounts page has no cards section', async () => {
+  mockAccounts()
+  renderPage()
+  await screen.findByText('Itaú')
+  expect(screen.queryByRole('region', { name: 'Cartões' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /Adicionar cartão/ })).not.toBeInTheDocument()
+})
 
 test('lists accounts with formatted balances', async () => {
   mockAccounts()
@@ -125,19 +176,22 @@ test('shows the server message for duplicate names', async () => {
 test('editing sends the new name and type', async () => {
   const captured = mockAccounts()
   const { user } = renderPage()
-  await user.click(await screen.findByRole('button', { name: 'Editar Itaú' }))
+  await user.click(await screen.findByRole('button', { name: 'Opções de Itaú' }))
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Editar' }))
   const form = screen.getByRole('form', { name: 'Editar Itaú' })
   const name = within(form).getByLabelText('Nome')
   await user.clear(name)
   await user.type(name, 'Itaú PF')
   await user.click(within(form).getByRole('button', { name: 'Salvar' }))
   await waitFor(() => expect(captured.updated).toEqual([{ name: 'Itaú PF', type: 'CHECKING' }]))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 })
 
 test('archiving asks for confirmation and shows the balance warning', async () => {
   const captured = mockAccounts()
   const { user } = renderPage()
-  await user.click(await screen.findByRole('button', { name: 'Arquivar Itaú' }))
+  await user.click(await screen.findByRole('button', { name: 'Opções de Itaú' }))
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Arquivar' }))
   expect(captured.archived).toEqual([])
   await user.click(screen.getByRole('button', { name: 'Arquivar conta' }))
   await waitFor(() => expect(captured.archived).toEqual([ACCOUNTS.itau.id]))
@@ -148,56 +202,27 @@ test('archiving asks for confirmation and shows the balance warning', async () =
 
 test('accounts page has no accessibility violations', async () => {
   mockAccounts()
-  const { container } = renderPage()
+  const { container, user } = renderPage()
   await screen.findByText('R$ 958,00')
+  await expectNoA11yViolations(container)
+  await user.click(screen.getByRole('button', { name: '+ Adicionar conta' }))
   await expectNoA11yViolations(container)
 })
 
 test('focus returns to the row after editing and to the message after archiving', async () => {
   mockAccounts()
   const { user } = renderPage()
-  await user.click(await screen.findByRole('button', { name: 'Editar Itaú' }))
+  await user.click(await screen.findByRole('button', { name: 'Opções de Itaú' }))
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Editar' }))
   const form = screen.getByRole('form', { name: 'Editar Itaú' })
   await user.click(within(form).getByRole('button', { name: 'Cancelar' }))
-  expect(screen.getByRole('button', { name: 'Editar Itaú' })).toHaveFocus()
-  await user.click(screen.getByRole('button', { name: 'Arquivar Itaú' }))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Opções de Itaú' })).toHaveFocus()
+  await user.click(screen.getByRole('button', { name: 'Opções de Itaú' }))
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Arquivar' }))
   await user.click(screen.getByRole('button', { name: 'Arquivar conta' }))
   await waitFor(() => expect(screen.getByRole('status')).toHaveFocus())
 })
-
-
-test('accounts page lists cards with open invoice and available limit', async () => {
-  mockAccounts()
-  const { user } = renderPage()
-  expect(await screen.findByRole('heading', { name: 'Contas e cartões' })).toBeInTheDocument()
-  const section = await screen.findByRole('region', { name: 'Cartões' })
-  const link = await within(section).findByRole('link', { name: /Nubank/ })
-  expect(link).toHaveAttribute('href', '/cartoes/card-nubank')
-  expect(within(section).getByText('Fatura aberta R$ 1.240,00')).toBeInTheDocument()
-  expect(within(section).getByText('Limite disponível R$ 1.560,00')).toBeInTheDocument()
-  expect(within(section).queryByRole('form', { name: 'Novo cartão' })).not.toBeInTheDocument()
-  await user.click(within(section).getByRole('button', { name: 'Adicionar cartão' }))
-  expect(within(section).getByRole('form', { name: 'Novo cartão' })).toBeInTheDocument()
-})
-
-test('shows the message left by the card page after archiving', async () => {
-  mockAccounts()
-  renderWithProviders(<AccountsPage />, {
-    route: { pathname: '/contas', state: { message: 'Cartão Nubank arquivado.' } },
-  })
-  expect(await screen.findByRole('status')).toHaveTextContent('Cartão Nubank arquivado.')
-})
-
-test('new card form takes the focus and gives it back on cancel', async () => {
-  mockAccounts()
-  const user = userEvent.setup()
-  renderWithProviders(<AccountsPage />, { route: '/contas' })
-  await user.click(await screen.findByRole('button', { name: 'Adicionar cartão' }))
-  expect(screen.getByLabelText('Nome do cartão')).toHaveFocus()
-  await user.click(screen.getByRole('button', { name: 'Cancelar' }))
-  expect(screen.getByRole('button', { name: 'Adicionar cartão' })).toHaveFocus()
-})
-
 
 test('archived accounts leave the total and can be unarchived', async () => {
   mockAccounts()
@@ -236,30 +261,26 @@ test('archived accounts leave the total and can be unarchived', async () => {
   expect(await screen.findByRole('status')).toHaveTextContent('Conta Antiga desarquivada.')
 })
 
-test('archived cards can be unarchived', async () => {
+
+test('a stray tap outside the new account sheet keeps what was typed', async () => {
   mockAccounts()
-  const unarchived: string[] = []
-  const inter = {
-    id: 'card-inter',
-    name: 'Inter',
-    credit_limit: '2000.00',
-    closing_day: 20,
-    due_day: 27,
-    opening_date: '2026-09-01',
-    archived_at: '2026-10-15T15:00:00Z',
-  }
-  server.use(
-    http.get('/api/v1/cards', () => HttpResponse.json([CARDS_SUMMARY[0]!.card, inter])),
-    http.post('/api/v1/cards/:id/unarchive', ({ params }) => {
-      unarchived.push(String(params.id))
-      return HttpResponse.json({ ...inter, archived_at: null })
-    }),
-  )
-  const user = userEvent.setup()
-  renderWithProviders(<AccountsPage />, { route: '/contas' })
-  await user.click(await screen.findByText('Cartões arquivados'))
-  const archived = await screen.findByRole('list', { name: 'Cartões arquivados' })
-  await user.click(await within(archived).findByRole('button', { name: 'Desarquivar Inter' }))
-  await waitFor(() => expect(unarchived).toEqual(['card-inter']))
-  expect(await screen.findByRole('status')).toHaveTextContent('Cartão Inter desarquivado.')
+  const { user } = renderPage()
+  await user.click(await screen.findByRole('button', { name: '+ Adicionar conta' }))
+  await user.type(screen.getByLabelText('Nome'), 'Reserva')
+  await user.click(screen.getByTestId('sheet-backdrop'))
+  expect(screen.getByLabelText('Nome')).toHaveValue('Reserva')
+})
+
+test('archive confirmation does not start on the archive button and sends once', async () => {
+  const captured = mockAccounts()
+  const { user } = renderPage()
+  await user.click(await screen.findByRole('button', { name: 'Opções de Itaú' }))
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Arquivar' }))
+  const confirm = screen.getByRole('button', { name: 'Arquivar conta' })
+  expect(confirm).not.toHaveFocus()
+  expect(screen.getByText(/^Arquivar Itaú\?/)).toHaveFocus()
+  await user.dblClick(confirm)
+  await waitFor(() => expect(captured.archived).toEqual([ACCOUNTS.itau.id]))
+  await screen.findByText('A conta foi arquivada com saldo de R$ 958,00.')
+  expect(captured.archived).toHaveLength(1)
 })

@@ -3,7 +3,7 @@ import type { AnalysisQuery } from '../../api/endpoints'
 import { shortDate } from '../../domain/dates'
 import { formatBRL } from '../../domain/money'
 import { ledgerRowClass } from '../../ui/styles'
-import { ledgerDetail } from '../home/Timeline'
+import { ledgerDetail } from '../transactions/ledger'
 import { useLedgerNames } from './useLedgerNames'
 
 /** O que foi gasto num dia tocado no calendário (o valor que conta no dia). */

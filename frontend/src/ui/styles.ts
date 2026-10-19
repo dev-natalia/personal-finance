@@ -15,6 +15,11 @@ export const secondaryButtonClass =
   'inline-flex min-h-11 items-center justify-center rounded-lg border-[1.5px] ' +
   'border-ink-soft/50 px-4 text-ink hover:bg-ink/5'
 
+/** Botão discreto, um tom mais escuro que o papel (ex.: "Formulário completo"). */
+export const quietButtonClass =
+  'inline-flex min-h-11 items-center justify-center rounded-lg border border-rule bg-rule/60 ' +
+  'px-5 font-semibold text-ink hover:bg-rule'
+
 export const chipClass =
   'inline-flex min-h-11 items-center rounded-full border-[1.5px] border-pen bg-slip px-4 ' +
   'text-pen aria-pressed:bg-pen aria-pressed:text-white'

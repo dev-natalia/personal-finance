@@ -14,7 +14,7 @@ import {
   linkClass,
   secondaryButtonClass,
 } from '../../ui/styles'
-import { LedgerAmount, ledgerDetail } from '../home/Timeline'
+import { LedgerAmount, ledgerDetail } from '../transactions/ledger'
 import { useLedgerNames } from './useLedgerNames'
 
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)

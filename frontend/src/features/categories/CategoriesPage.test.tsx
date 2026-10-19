@@ -157,3 +157,19 @@ test('keyboard focus is kept or returned after each action', async () => {
   await user.click(screen.getByRole('button', { name: 'Arquivar categoria' }))
   await waitFor(() => expect(screen.getByRole('status')).toHaveFocus())
 })
+
+test('essential is explained', async () => {
+  mockCategories()
+  renderPage()
+  const note = await screen.findByText(
+    'Essencial: gastos que o planejamento vai reservar primeiro (moradia, contas, saúde).',
+  )
+  expect(screen.getAllByText(/^Essencial: gastos que o planejamento/)).toHaveLength(1)
+  // A explicação fica no grupo das despesas, antes da lista.
+  const expenses = screen.getByRole('region', { name: 'Despesas' })
+  expect(expenses).toContainElement(note)
+  const saude = await screen.findByRole('checkbox', { name: 'Essencial (Saúde)' })
+  expect(saude).toHaveAccessibleDescription(
+    'Essencial: gastos que o planejamento vai reservar primeiro (moradia, contas, saúde).',
+  )
+})
