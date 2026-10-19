@@ -261,3 +261,26 @@ test('archived accounts leave the total and can be unarchived', async () => {
   expect(await screen.findByRole('status')).toHaveTextContent('Conta Antiga desarquivada.')
 })
 
+
+test('a stray tap outside the new account sheet keeps what was typed', async () => {
+  mockAccounts()
+  const { user } = renderPage()
+  await user.click(await screen.findByRole('button', { name: '+ Adicionar conta' }))
+  await user.type(screen.getByLabelText('Nome'), 'Reserva')
+  await user.click(screen.getByTestId('sheet-backdrop'))
+  expect(screen.getByLabelText('Nome')).toHaveValue('Reserva')
+})
+
+test('archive confirmation does not start on the archive button and sends once', async () => {
+  const captured = mockAccounts()
+  const { user } = renderPage()
+  await user.click(await screen.findByRole('button', { name: 'Opções de Itaú' }))
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Arquivar' }))
+  const confirm = screen.getByRole('button', { name: 'Arquivar conta' })
+  expect(confirm).not.toHaveFocus()
+  expect(screen.getByText(/^Arquivar Itaú\?/)).toHaveFocus()
+  await user.dblClick(confirm)
+  await waitFor(() => expect(captured.archived).toEqual([ACCOUNTS.itau.id]))
+  await screen.findByText('A conta foi arquivada com saldo de R$ 958,00.')
+  expect(captured.archived).toHaveLength(1)
+})

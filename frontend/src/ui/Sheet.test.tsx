@@ -7,7 +7,7 @@ import { useInPlace } from './focus'
 import { Sheet } from './Sheet'
 
 /** Como as telas usam: um botão abre, o `useInPlace` devolve o foco ao fechar. */
-function Harness() {
+function Harness({ dismissOnBackdrop }: { dismissOnBackdrop?: boolean }) {
   const sheet = useInPlace()
   return (
     <main>
@@ -16,7 +16,7 @@ function Harness() {
       </button>
       <a href="#atras">Link atrás</a>
       {sheet.open && (
-        <Sheet title="Nova conta" onClose={() => sheet.close()}>
+        <Sheet title="Nova conta" onClose={() => sheet.close()} dismissOnBackdrop={dismissOnBackdrop}>
           <label>
             Nome
             <input />
@@ -62,4 +62,35 @@ test('sheet has no accessibility violations', async () => {
   const { container } = render(<Harness />)
   await user.click(screen.getByRole('button', { name: 'Abrir' }))
   await expectNoA11yViolations(container)
+})
+
+test('shift+tab from the panel itself stays inside', async () => {
+  const user = userEvent.setup()
+  render(<Harness />)
+  await user.click(screen.getByRole('button', { name: 'Abrir' }))
+  const dialog = screen.getByRole('dialog', { name: 'Nova conta' })
+  // Um toque num ponto sem controle (o título) põe o foco no próprio painel.
+  await user.click(screen.getByRole('heading', { name: 'Nova conta' }))
+  expect(dialog).toHaveFocus()
+  await user.tab({ shift: true })
+  expect(dialog).toContainElement(document.activeElement as HTMLElement)
+  await user.keyboard('{Escape}')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+test('the page behind does not scroll while the sheet is open', async () => {
+  const user = userEvent.setup()
+  render(<Harness />)
+  await user.click(screen.getByRole('button', { name: 'Abrir' }))
+  expect(document.body.style.overflow).toBe('hidden')
+  await user.keyboard('{Escape}')
+  expect(document.body.style.overflow).toBe('')
+})
+
+test('a form sheet ignores taps on the backdrop', async () => {
+  const user = userEvent.setup()
+  render(<Harness dismissOnBackdrop={false} />)
+  await user.click(screen.getByRole('button', { name: 'Abrir' }))
+  await user.click(screen.getByTestId('sheet-backdrop'))
+  expect(screen.getByRole('dialog', { name: 'Nova conta' })).toBeInTheDocument()
 })

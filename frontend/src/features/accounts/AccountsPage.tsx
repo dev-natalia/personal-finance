@@ -95,7 +95,7 @@ export function AccountsPage() {
         ))}
       </ul>
       {adding.open && (
-        <Sheet title="Nova conta" onClose={() => adding.close()}>
+        <Sheet title="Nova conta" onClose={() => adding.close()} dismissOnBackdrop={false}>
           <NewAccountForm
             onCreated={(name) => {
               adding.close()
@@ -152,6 +152,7 @@ function AccountRow({
 }) {
   const options = useInPlace()
   const [mode, setMode] = useState<'menu' | 'edit' | 'archive'>('menu')
+  const [archiving, setArchiving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const refresh = useRefreshAccounts()
 
@@ -162,6 +163,9 @@ function AccountRow({
   }
 
   async function archive() {
+    // Toque duplo: o segundo é ignorado enquanto o primeiro está indo.
+    if (archiving) return
+    setArchiving(true)
     try {
       const result = await api.archiveAccount(account.id)
       const warning = (result.warnings ?? [])[0]?.detail
@@ -171,6 +175,7 @@ function AccountRow({
       await refresh()
     } catch (err) {
       setError(messageOf(err))
+      setArchiving(false)
     }
   }
 
@@ -198,7 +203,12 @@ function AccountRow({
         </span>
       </button>
       {options.open && (
-        <Sheet title={account.name} onClose={() => options.close()} focusKey={mode}>
+        <Sheet
+          title={account.name}
+          onClose={() => options.close()}
+          focusKey={mode}
+          dismissOnBackdrop={mode !== 'edit'}
+        >
           {mode === 'menu' && (
             <div className="flex flex-col gap-2">
               <button type="button" onClick={() => setMode('edit')} className={secondaryButtonClass}>
@@ -212,12 +222,18 @@ function AccountRow({
           {mode === 'edit' && <EditAccountForm account={account} onDone={() => options.close()} />}
           {mode === 'archive' && (
             <div className="flex flex-col gap-3">
-              <p className="text-sm">
+              {/* O foco começa na pergunta: Enter repetido não arquiva sem uma escolha. */}
+              <p data-autofocus tabIndex={-1} className="text-sm outline-none">
                 Arquivar {account.name}? Ela some da lista e não aceita novos lançamentos; o
                 histórico continua.
               </p>
               <div className="flex gap-2">
-                <button type="button" onClick={archive} className={primaryButtonClass}>
+                <button
+                  type="button"
+                  onClick={archive}
+                  aria-disabled={archiving || undefined}
+                  className={primaryButtonClass}
+                >
                   Arquivar conta
                 </button>
                 <button type="button" onClick={() => options.close()} className={secondaryButtonClass}>
