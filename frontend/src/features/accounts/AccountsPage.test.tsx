@@ -62,12 +62,55 @@ function renderPage() {
 }
 
 async function fillNewAccount(user: ReturnType<typeof userEvent.setup>, name: string, amount: string) {
-  const form = await screen.findByRole('form', { name: 'Nova conta' })
+  await user.click(await screen.findByRole('button', { name: '+ Adicionar conta' }))
+  const form = within(screen.getByRole('dialog', { name: 'Nova conta' })).getByRole('form', {
+    name: 'Nova conta',
+  })
   await user.type(within(form).getByLabelText('Nome'), name)
   await user.selectOptions(within(form).getByLabelText('Tipo'), 'Poupança')
   await user.type(within(form).getByLabelText('Saldo de abertura'), amount)
   await user.click(within(form).getByRole('button', { name: 'Criar conta' }))
 }
+
+test('page title is Contas', async () => {
+  mockAccounts()
+  renderPage()
+  expect(await screen.findByRole('heading', { level: 1, name: 'Contas' })).toBeInTheDocument()
+  // O formulário de nova conta não fica mais aberto no meio da página.
+  expect(screen.queryByRole('form', { name: 'Nova conta' })).not.toBeInTheDocument()
+})
+
+test('creates an account from the add sheet', async () => {
+  const captured = mockAccounts()
+  const { user } = renderPage()
+  await fillNewAccount(user, 'Reserva', '1.000,50')
+  await waitFor(() => expect(captured.created).toHaveLength(1))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(screen.getByRole('status')).toHaveTextContent('Conta Reserva criada.')
+  expect(screen.getByRole('button', { name: '+ Adicionar conta' })).toHaveFocus()
+})
+
+test('cancel closes the add sheet without creating', async () => {
+  const captured = mockAccounts()
+  const { user } = renderPage()
+  await user.click(await screen.findByRole('button', { name: '+ Adicionar conta' }))
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancelar' }))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(captured.created).toEqual([])
+  expect(screen.getByRole('button', { name: '+ Adicionar conta' })).toHaveFocus()
+})
+
+test('account options open in a sheet', async () => {
+  mockAccounts()
+  const { user } = renderPage()
+  await user.click(await screen.findByRole('button', { name: 'Opções de Itaú' }))
+  const dialog = screen.getByRole('dialog', { name: 'Itaú' })
+  expect(within(dialog).getByRole('button', { name: 'Editar' })).toBeInTheDocument()
+  expect(within(dialog).getByRole('button', { name: 'Arquivar' })).toBeInTheDocument()
+  await user.keyboard('{Escape}')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Opções de Itaú' })).toHaveFocus()
+})
 
 test('accounts page has no cards section', async () => {
   mockAccounts()
@@ -133,19 +176,22 @@ test('shows the server message for duplicate names', async () => {
 test('editing sends the new name and type', async () => {
   const captured = mockAccounts()
   const { user } = renderPage()
-  await user.click(await screen.findByRole('button', { name: 'Editar Itaú' }))
+  await user.click(await screen.findByRole('button', { name: 'Opções de Itaú' }))
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Editar' }))
   const form = screen.getByRole('form', { name: 'Editar Itaú' })
   const name = within(form).getByLabelText('Nome')
   await user.clear(name)
   await user.type(name, 'Itaú PF')
   await user.click(within(form).getByRole('button', { name: 'Salvar' }))
   await waitFor(() => expect(captured.updated).toEqual([{ name: 'Itaú PF', type: 'CHECKING' }]))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 })
 
 test('archiving asks for confirmation and shows the balance warning', async () => {
   const captured = mockAccounts()
   const { user } = renderPage()
-  await user.click(await screen.findByRole('button', { name: 'Arquivar Itaú' }))
+  await user.click(await screen.findByRole('button', { name: 'Opções de Itaú' }))
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Arquivar' }))
   expect(captured.archived).toEqual([])
   await user.click(screen.getByRole('button', { name: 'Arquivar conta' }))
   await waitFor(() => expect(captured.archived).toEqual([ACCOUNTS.itau.id]))
@@ -156,19 +202,24 @@ test('archiving asks for confirmation and shows the balance warning', async () =
 
 test('accounts page has no accessibility violations', async () => {
   mockAccounts()
-  const { container } = renderPage()
+  const { container, user } = renderPage()
   await screen.findByText('R$ 958,00')
+  await expectNoA11yViolations(container)
+  await user.click(screen.getByRole('button', { name: '+ Adicionar conta' }))
   await expectNoA11yViolations(container)
 })
 
 test('focus returns to the row after editing and to the message after archiving', async () => {
   mockAccounts()
   const { user } = renderPage()
-  await user.click(await screen.findByRole('button', { name: 'Editar Itaú' }))
+  await user.click(await screen.findByRole('button', { name: 'Opções de Itaú' }))
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Editar' }))
   const form = screen.getByRole('form', { name: 'Editar Itaú' })
   await user.click(within(form).getByRole('button', { name: 'Cancelar' }))
-  expect(screen.getByRole('button', { name: 'Editar Itaú' })).toHaveFocus()
-  await user.click(screen.getByRole('button', { name: 'Arquivar Itaú' }))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Opções de Itaú' })).toHaveFocus()
+  await user.click(screen.getByRole('button', { name: 'Opções de Itaú' }))
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Arquivar' }))
   await user.click(screen.getByRole('button', { name: 'Arquivar conta' }))
   await waitFor(() => expect(screen.getByRole('status')).toHaveFocus())
 })

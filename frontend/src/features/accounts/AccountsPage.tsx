@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { type FormEvent, useId, useRef, useState } from 'react'
+import { type FormEvent, useId, useState } from 'react'
 
 import { ApiError, type FieldError } from '../../api/client'
 import { api } from '../../api/endpoints'
@@ -8,7 +8,8 @@ import type { AccountOut } from '../../api/types'
 import { firstDayOfMonth } from '../../domain/dates'
 import { ACCOUNT_TYPE_LABELS } from '../../domain/labels'
 import { formatBRL, tryParseSignedMoney } from '../../domain/money'
-import { type Announce, useFocusOnReturn, useMessageFromNavigation, useStatus } from '../../ui/focus'
+import { type Announce, useInPlace, useMessageFromNavigation, useStatus } from '../../ui/focus'
+import { Sheet } from '../../ui/Sheet'
 import { MoneyInput } from '../../ui/MoneyInput'
 import { ArchivedList, ArchivedSection } from './ArchivedList'
 import { Page } from '../../ui/Page'
@@ -16,7 +17,6 @@ import {
   errorTextClass,
   fieldLabelClass,
   inputClass,
-  ledgerRowClass,
   primaryButtonClass,
   secondaryButtonClass,
 } from '../../ui/styles'
@@ -24,7 +24,6 @@ import {
 type AccountType = AccountOut['type']
 const ACCOUNT_TYPES = Object.entries(ACCOUNT_TYPE_LABELS) as [AccountType, string][]
 const INVALID_AMOUNT = 'Use um valor como 1.234,56.'
-const textButton = 'min-h-11 px-2 text-sm text-pen underline-offset-2 hover:underline'
 
 function fieldErrorsOf(error: unknown): Record<string, string> {
   if (!(error instanceof ApiError)) return {}
@@ -52,10 +51,21 @@ export function AccountsPage() {
   const balances = useBalances()
   const { announce, status } = useStatus()
   useMessageFromNavigation(announce)
+  const adding = useInPlace()
   const balanceOf = new Map((balances.data?.accounts ?? []).map((b) => [b.account_id, b.balance]))
 
   return (
-    <Page title="Contas e cartões">
+    <Page title="Contas">
+      <div className="-mt-2 mb-4 flex justify-end">
+        <button
+          ref={adding.buttonRef}
+          type="button"
+          onClick={adding.show}
+          className={`${primaryButtonClass} px-4 text-sm`}
+        >
+          + Adicionar conta
+        </button>
+      </div>
       {balances.data && (
         <p className="mb-2 flex items-baseline justify-between text-ink-soft">
           Total em contas
@@ -71,7 +81,10 @@ export function AccountsPage() {
         </p>
       )}
       {status}
-      <ul aria-label="Suas contas" className="mb-8">
+      <ul
+        aria-label="Suas contas"
+        className="mb-6 overflow-hidden rounded-xl border border-rule bg-slip shadow-[0_2px_8px_rgba(27,35,64,0.06)]"
+      >
         {(accounts.data ?? []).map((account) => (
           <AccountRow
             key={account.id}
@@ -81,7 +94,17 @@ export function AccountsPage() {
           />
         ))}
       </ul>
-      <NewAccountForm onCreated={(name) => announce(`Conta ${name} criada.`)} />
+      {adding.open && (
+        <Sheet title="Nova conta" onClose={() => adding.close()}>
+          <NewAccountForm
+            onCreated={(name) => {
+              adding.close()
+              announce(`Conta ${name} criada.`)
+            }}
+            onCancel={() => adding.close()}
+          />
+        </Sheet>
+      )}
       <ArchivedSection title="Contas arquivadas">
         <ArchivedAccounts balanceOf={balanceOf} onMessage={announce} />
       </ArchivedSection>
@@ -127,17 +150,23 @@ function AccountRow({
   balance: string | null
   onMessage: Announce
 }) {
-  const [mode, setMode] = useState<'view' | 'edit' | 'archive'>('view')
+  const options = useInPlace()
+  const [mode, setMode] = useState<'menu' | 'edit' | 'archive'>('menu')
   const [error, setError] = useState<string | null>(null)
   const refresh = useRefreshAccounts()
-  const editRef = useRef<HTMLButtonElement>(null)
-  useFocusOnReturn(mode, editRef)
+
+  function open() {
+    setMode('menu')
+    setError(null)
+    options.show()
+  }
 
   async function archive() {
     try {
       const result = await api.archiveAccount(account.id)
       const warning = (result.warnings ?? [])[0]?.detail
       // A conta some da lista: o foco vai para a mensagem.
+      options.close({ keepFocus: true })
       onMessage(warning ?? `Conta ${account.name} arquivada.`, { focus: true })
       await refresh()
     } catch (err) {
@@ -145,62 +174,64 @@ function AccountRow({
     }
   }
 
-  if (mode === 'edit') {
-    return (
-      <li className="border-b border-rule py-3">
-        <EditAccountForm account={account} onDone={() => setMode('view')} />
-      </li>
-    )
-  }
-
   const negative = balance?.startsWith('-') ?? false
   return (
-    <li className={`${ledgerRowClass} flex-wrap`}>
-      <div className="min-w-0">
-        <p className="truncate">{account.name}</p>
-        <p className="text-[13px] text-ink-soft">{ACCOUNT_TYPE_LABELS[account.type]}</p>
-      </div>
-      <span className={`tabular shrink-0 ${negative ? 'text-stamp' : ''}`}>
-        {balance !== null ? formatBRL(balance) : '…'}
-      </span>
-      {mode === 'archive' ? (
-        <div className="flex w-full flex-wrap items-center gap-2 pt-2">
-          <p className="w-full text-sm">
-            Arquivar {account.name}? Ela some da lista e não aceita novos lançamentos; o histórico
-            continua.
-          </p>
-          <button type="button" onClick={archive} className={primaryButtonClass}>
-            Arquivar conta
-          </button>
-          <button type="button" onClick={() => setMode('view')} className={secondaryButtonClass}>
-            Cancelar
-          </button>
-        </div>
-      ) : (
-        <div className="flex w-full gap-1">
-          <button
-            ref={editRef}
-            type="button"
-            aria-label={`Editar ${account.name}`}
-            onClick={() => setMode('edit')}
-            className={textButton}
-          >
-            Editar
-          </button>
-          <button
-            type="button"
-            aria-label={`Arquivar ${account.name}`}
-            onClick={() => setMode('archive')}
-            className={textButton}
-          >
-            Arquivar
-          </button>
-        </div>
-      )}
-      {error && (
-        <p role="alert" className={`w-full ${errorTextClass}`}>
-          {error}
-        </p>
+    <li className="border-b border-rule last:border-b-0">
+      <button
+        ref={options.buttonRef}
+        type="button"
+        aria-label={`Opções de ${account.name}`}
+        onClick={open}
+        className="flex min-h-14 w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-paper/60"
+      >
+        <span className="min-w-0">
+          <span className="block truncate">{account.name}</span>
+          <span className="block text-[13px] text-ink-soft">{ACCOUNT_TYPE_LABELS[account.type]}</span>
+        </span>
+        <span className="flex shrink-0 items-center gap-2">
+          <span className={`tabular ${negative ? 'text-stamp' : ''}`}>
+            {balance !== null ? formatBRL(balance) : '…'}
+          </span>
+          <span aria-hidden="true" className="text-ink-soft">
+            ›
+          </span>
+        </span>
+      </button>
+      {options.open && (
+        <Sheet title={account.name} onClose={() => options.close()} focusKey={mode}>
+          {mode === 'menu' && (
+            <div className="flex flex-col gap-2">
+              <button type="button" onClick={() => setMode('edit')} className={secondaryButtonClass}>
+                Editar
+              </button>
+              <button type="button" onClick={() => setMode('archive')} className={secondaryButtonClass}>
+                Arquivar
+              </button>
+            </div>
+          )}
+          {mode === 'edit' && <EditAccountForm account={account} onDone={() => options.close()} />}
+          {mode === 'archive' && (
+            <div className="flex flex-col gap-3">
+              <p className="text-sm">
+                Arquivar {account.name}? Ela some da lista e não aceita novos lançamentos; o
+                histórico continua.
+              </p>
+              <div className="flex gap-2">
+                <button type="button" onClick={archive} className={primaryButtonClass}>
+                  Arquivar conta
+                </button>
+                <button type="button" onClick={() => options.close()} className={secondaryButtonClass}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+          {error && (
+            <p role="alert" className={`mt-3 ${errorTextClass}`}>
+              {error}
+            </p>
+          )}
+        </Sheet>
       )}
     </li>
   )
@@ -262,7 +293,13 @@ function EditAccountForm({ account, onDone }: { account: AccountOut; onDone: () 
   )
 }
 
-function NewAccountForm({ onCreated }: { onCreated: (name: string) => void }) {
+function NewAccountForm({
+  onCreated,
+  onCancel,
+}: {
+  onCreated: (name: string) => void
+  onCancel: () => void
+}) {
   const id = useId()
   const hints = useEntryHints()
   const refresh = useRefreshAccounts()
@@ -306,7 +343,6 @@ function NewAccountForm({ onCreated }: { onCreated: (name: string) => void }) {
 
   return (
     <form aria-label="Nova conta" onSubmit={submit} noValidate className="flex flex-col gap-3">
-      <h2 className="text-lg font-[650]">Nova conta</h2>
       <div className="flex flex-col gap-1">
         <label htmlFor={`${id}-name`} className={fieldLabelClass}>
           Nome
@@ -356,9 +392,14 @@ function NewAccountForm({ onCreated }: { onCreated: (name: string) => void }) {
           {formError}
         </p>
       )}
-      <button type="submit" className={`${primaryButtonClass} self-start`}>
-        Criar conta
-      </button>
+      <div className="flex gap-2">
+        <button type="submit" className={primaryButtonClass}>
+          Criar conta
+        </button>
+        <button type="button" onClick={onCancel} className={secondaryButtonClass}>
+          Cancelar
+        </button>
+      </div>
     </form>
   )
 }

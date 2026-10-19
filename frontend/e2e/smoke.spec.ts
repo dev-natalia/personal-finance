@@ -17,6 +17,7 @@ test('login, record a phrase and see the balance', async ({ page }) => {
   expect(swActive).toBe(true)
 
   await page.getByRole('link', { name: 'Contas' }).click()
+  await page.getByRole('button', { name: '+ Adicionar conta' }).click()
   const form = page.getByRole('form', { name: 'Nova conta' })
   await form.getByLabel('Nome').fill('Itaú')
   await form.getByLabel('Saldo de abertura').fill('1.000,00')
@@ -56,6 +57,7 @@ test('card: opening, installment purchase and payment', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Início' })).toBeAttached()
 
   await page.getByRole('link', { name: 'Contas' }).click()
+  await page.getByRole('button', { name: '+ Adicionar conta' }).click()
   const account = page.getByRole('form', { name: 'Nova conta' })
   await account.getByLabel('Nome').fill('Bradesco')
   await account.getByLabel('Saldo de abertura').fill('5.000,00')
@@ -119,6 +121,7 @@ test('analysis: month by category and place', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Início' })).toBeAttached()
 
   await page.getByRole('link', { name: 'Contas' }).click()
+  await page.getByRole('button', { name: '+ Adicionar conta' }).click()
   const account = page.getByRole('form', { name: 'Nova conta' })
   await account.getByLabel('Nome').fill('Inter')
   await account.getByLabel('Saldo de abertura').fill('500,00')
