@@ -11,14 +11,16 @@ const money = formatBRLNoBreak
 interface Props {
   /** O que pedir à prévia; nulo enquanto não é compra no cartão com valor válido. */
   input: { cardId: string; body: PreviewIn } | null
+  /** Compra sendo gravada: os números ficam como estavam (não são consultados de novo). */
+  frozen?: boolean
 }
 
 /**
  * Como a fatura e o limite ficam com a compra. Os números vêm do backend (a prévia não grava
  * nada); se a prévia falhar, nenhum número é inventado aqui.
  */
-export function CardImpact({ input }: Props) {
-  const preview = usePurchasePreview(input)
+export function CardImpact({ input, frozen = false }: Props) {
+  const preview = usePurchasePreview(input, frozen)
   if (input === null) return null
   if (preview.isError) {
     // Recusa do backend (ex.: data antes do início do cartão): o motivo, não um erro genérico.
