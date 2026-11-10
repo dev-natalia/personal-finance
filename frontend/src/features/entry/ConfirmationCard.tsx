@@ -3,7 +3,12 @@ import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 
 import { ApiError } from '../../api/client'
 import { api } from '../../api/endpoints'
-import { queryKeys, useCategories, useInvalidateLedger } from '../../api/queries'
+import {
+  cancelPreviews,
+  queryKeys,
+  useCategories,
+  useInvalidateLedger,
+} from '../../api/queries'
 import type { EntryHintsOut, PurchasePreviewOut } from '../../api/types'
 import { monthName } from '../../domain/dates'
 import { formatBRL } from '../../domain/money'
@@ -110,6 +115,8 @@ export function ConfirmationCard({ parsed, text, hints, onSaved, onClose }: Prop
     if (busy) return
     setBusy(true)
     recordMisread(text, changeReasons(parsed, initialItems.current, items))
+    // Prévia ainda a caminho não pode chegar depois da gravação: contaria a compra em dobro.
+    await cancelPreviews(queryClient)
     const saved: SavedEntry[] = []
     const savedNow = new Set<number>()
     let failures = 0
@@ -117,11 +124,13 @@ export function ConfirmationCard({ parsed, text, hints, onSaved, onClose }: Prop
     for (const [index, item] of items.entries()) {
       if (!item.included || item.status === 'saved') continue
       const { body, key, sentBody } = prepareSend(item)
+      // Lida antes de enviar: é a prévia que estava na tela no toque em Confirmar.
+      const invoice = invoiceLine(item)
       dispatch({ type: 'sending', index, key, sentBody })
       try {
         const result = await api.createTransaction(body, key)
         const entry = {
-          line: describeSaved(result.transaction, names) + invoiceLine(item),
+          line: describeSaved(result.transaction, names) + invoice,
           warnings: (result.warnings ?? []).map((w) => w.detail),
         }
         dispatch({ type: 'saved', index, ...entry })

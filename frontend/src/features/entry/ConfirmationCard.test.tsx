@@ -1,6 +1,6 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { HttpResponse, http } from 'msw'
+import { HttpResponse, delay, http } from 'msw'
 import { expect, test, vi } from 'vitest'
 
 import type { ExpenseIn, TransactionWriteOut } from '../../api/types'
@@ -380,6 +380,39 @@ test('saved card line adds the invoice total from the preview', async () => {
       warnings: [],
     },
   ])
+})
+
+test('a preview that arrives after the purchase was saved is discarded', async () => {
+  // A prévia responde depois de a compra estar gravada (já a contaria no "antes") e antes de
+  // a gravação responder: o número dela traria a compra em dobro.
+  mockApi()
+  server.use(
+    http.post('/api/v1/cards/:id/preview', async () => {
+      await delay(50)
+      return HttpResponse.json(PREVIEW)
+    }),
+    http.post('/api/v1/transactions', async () => {
+      await delay(200)
+      return HttpResponse.json(
+        {
+          transaction: transaction({
+            account_id: null,
+            card_id: CARDS.nubank.id,
+            payment_method: 'CREDIT',
+          }),
+          replayed: false,
+          warnings: [],
+        },
+        { status: 201 },
+      )
+    }),
+  )
+  const { user, onSaved } = renderCard([onCard()])
+  await user.click(screen.getByRole('button', { name: 'Confirmar' }))
+  await waitFor(() => expect(onSaved).toHaveBeenCalled())
+  const [entries] = onSaved.mock.calls[0]!
+  expect(entries[0].line).toContain('Despesa registrada')
+  expect(entries[0].line).not.toContain('Fatura de')
 })
 
 test('confirmation card with card has no accessibility violations', async () => {

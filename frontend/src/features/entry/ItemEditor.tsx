@@ -136,7 +136,7 @@ export function ItemEditor({ item, index, total, hints, categories, dispatch, lo
       <div className="my-3 border-t border-dashed border-ink-soft/50" />
 
       {item.type === 'EXPENSE' ? (
-        <PaymentFields item={item} hints={hints} id={id} edit={edit} />
+        <PaymentFields item={item} hints={hints} id={id} edit={edit} frozen={disabled} />
       ) : (
         <div className={fieldRow}>
           <label htmlFor={`${id}-account`} className={fieldLabel}>
@@ -174,11 +174,14 @@ function PaymentFields({
   hints,
   id,
   edit,
+  frozen,
 }: {
   item: CardItem
   hints: EntryHintsOut
   id: string
   edit: Edit
+  /** Lote sendo enviado: a prévia do cartão não é consultada de novo. */
+  frozen: boolean
 }) {
   const accountMethod = item.paymentMethod === 'CREDIT' ? null : item.paymentMethod
   const useCard = (cardId: string) => edit({ cardId, accountId: null, paymentMethod: 'CREDIT' })
@@ -281,7 +284,7 @@ function PaymentFields({
           </label>
         )}
       </div>
-      <CardImpact input={previewInput(item)} />
+      <CardImpact input={previewInput(item)} frozen={frozen} />
     </fieldset>
   )
 }

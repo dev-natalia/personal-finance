@@ -1,5 +1,6 @@
 /** Consultas com cache (TanStack Query) usadas pelas telas. */
 import {
+  type QueryClient,
   keepPreviousData,
   useInfiniteQuery,
   useQuery,
@@ -146,13 +147,30 @@ export function useInvoice(invoiceId: string | null) {
  * Prévia do impacto de uma compra na fatura e no limite (o backend calcula; nada é gravado).
  * `null` desliga a consulta (compra ainda incompleta). Mantém o resultado anterior enquanto o
  * novo chega, para os números não piscarem a cada tecla.
+ *
+ * `frozen`: a compra está sendo gravada. A prévia não é consultada de novo até terminar: uma
+ * resposta calculada depois da gravação já traria a compra no "antes" e a somaria outra vez
+ * no "depois" (fatura e limite com o valor da compra em dobro).
  */
-export function usePurchasePreview(input: { cardId: string; body: PreviewIn } | null) {
+export function usePurchasePreview(
+  input: { cardId: string; body: PreviewIn } | null,
+  frozen = false,
+) {
   return useQuery({
     queryKey: input ? queryKeys.preview(input.cardId, input.body) : ['cards', 'preview', 'off'],
     queryFn: () => api.previewPurchase(input!.cardId, input!.body),
-    enabled: input !== null,
+    enabled: input !== null && !frozen,
     placeholderData: keepPreviousData,
+  })
+}
+
+/**
+ * Descarta as prévias ainda em andamento, antes de gravar uma compra: se a resposta chegasse
+ * depois da gravação, contaria a compra duas vezes (ver `usePurchasePreview`).
+ */
+export function cancelPreviews(queryClient: QueryClient): Promise<void> {
+  return queryClient.cancelQueries({
+    predicate: (query) => query.queryKey[0] === 'cards' && query.queryKey[2] === 'preview',
   })
 }
 

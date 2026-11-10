@@ -1,8 +1,10 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { type FormEvent, type ReactNode, useId, useState } from 'react'
 
 import { ApiError } from '../../api/client'
 import { api } from '../../api/endpoints'
 import {
+  cancelPreviews,
   useCardCycle,
   useCards,
   useCategories,
@@ -183,6 +185,7 @@ export function TransactionForm({ initial, defaults = {}, onDone, onCancel }: Pr
   const hints = useEntryHints()
   const categories = useCategories()
   const invalidate = useInvalidateLedger()
+  const queryClient = useQueryClient()
   const keyFor = useIdempotencyKey()
   const [f, setF] = useState<Fields>(() => fieldsOf(initial, defaults))
   const [errors, setErrors] = useState<Errors>({})
@@ -243,22 +246,25 @@ export function TransactionForm({ initial, defaults = {}, onDone, onCancel }: Pr
     setErrors(local)
     if (Object.keys(local).length > 0 || amount === null) return
 
-    let request: Promise<TransactionWriteOut>
+    let send: () => Promise<TransactionWriteOut>
     if (initial) {
       const patch = changedFields(initial, f, amount, date)
       if (Object.keys(patch).length === 0) {
         setDetail('Nada mudou. Altere algum campo ou feche o formulário.')
         return
       }
-      request = api.updateTransaction(initial.id, patch)
+      send = () => api.updateTransaction(initial.id, patch)
     } else {
       const body = newBody(f, amount, date, beforeStart)
-      request = api.createTransaction(body, keyFor(body))
+      const key = keyFor(body)
+      send = () => api.createTransaction(body, key)
     }
 
     setSaving(true)
     try {
-      const result = await request
+      // Prévia ainda a caminho não pode chegar depois da gravação: contaria a compra em dobro.
+      await cancelPreviews(queryClient)
+      const result = await send()
       await invalidate()
       onDone(result)
     } catch (error) {
@@ -431,7 +437,7 @@ export function TransactionForm({ initial, defaults = {}, onDone, onCancel }: Pr
       )}
 
       {!editing && f.type === 'EXPENSE' && onCard && !beforeStart && (
-        <CardImpact input={previewOf(f, date)} />
+        <CardImpact input={previewOf(f, date)} frozen={saving} />
       )}
 
       {f.type === 'EXPENSE' && !onCard && (
